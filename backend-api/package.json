@@ -1,0 +1,40 @@
+{
+  "name": "flicker-secure-backend",
+  "version": "1.0.0",
+  "description": "Production backend for FlickerSecure",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "ts-node-dev src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "db:migrate": "node dist/database/migrations.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "axios": "1.6.2",
+    "bcryptjs": "2.4.3",
+    "cors": "2.8.5",
+    "crypto-js": "4.1.1",
+    "dotenv": "16.3.1",
+    "express": "4.18.2",
+    "express-rate-limit": "6.10.0",
+    "express-validator": "7.0.1",
+    "helmet": "7.0.0",
+    "jsonwebtoken": "9.0.2",
+    "pg": "8.11.3",
+    "redis": "4.6.10",
+    "sequelize": "6.32.1",
+    "socket.io": "4.7.2",
+    "winston": "3.11.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "2.4.6",
+    "@types/cors": "2.8.15",
+    "@types/crypto-js": "^4.2.2",
+    "@types/express": "4.17.20",
+    "@types/jsonwebtoken": "9.0.5",
+    "@types/node": "20.8.0",
+    "ts-node-dev": "2.0.0",
+    "typescript": "5.2.2"
+  }
+}

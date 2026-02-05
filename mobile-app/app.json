@@ -1,0 +1,10 @@
+{
+  "name": "FlickerSecureMobile",
+  "displayName": "FlickerSecureMobile",
+  "expo": {
+    "name": "FlickerSecureMobile",
+    "slug": "flicker-secure-mobile",
+    "version": "1.0.0",
+    "assetBundlePatterns": ["**/*"]
+  }
+}

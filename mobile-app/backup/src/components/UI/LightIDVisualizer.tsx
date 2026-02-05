@@ -1,0 +1,1 @@
+// LightIDVisualizer component

@@ -1,0 +1,1 @@
+// ProximityIndicator component
