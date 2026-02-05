@@ -10,12 +10,18 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
 import proximityRoutes from './routes/proximity.routes';
 import deviceRoutes from './routes/device.routes';
+import deliveryRoutes from './routes/delivery.routes';
 
-// Import database
-import sequelize from './models';
-
-// Load environment variables
+// Load environment variables FIRST
 dotenv.config();
+
+// Import database (with fallback to mock)
+let sequelize: any = null;
+try {
+  sequelize = require('./models').default || require('./models');
+} catch (error) {
+  console.log('⚠️  Could not load Sequelize models, will use mock database');
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -51,6 +57,7 @@ app.use('/api/', apiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/proximity', proximityRoutes);
 app.use('/api/devices', deviceRoutes);
+app.use('/api/delivery', deliveryRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -69,6 +76,29 @@ io.on('connection', (socket) => {
   socket.on('join-session', (sessionId) => {
     socket.join(`session:${sessionId}`);
     console.log(`Client ${socket.id} joined session ${sessionId}`);
+  });
+  
+  // Join delivery tracking room
+  socket.on('join-delivery', (orderId) => {
+    socket.join(`delivery:${orderId}`);
+    console.log(`Client ${socket.id} joined delivery tracking ${orderId}`);
+  });
+  
+  // Real-time delivery location update
+  socket.on('delivery-location-update', (data) => {
+    const { orderId, latitude, longitude, speed, heading } = data;
+    
+    // Broadcast to all clients tracking this delivery
+    io.to(`delivery:${orderId}`).emit('delivery-location-changed', {
+      orderId,
+      latitude,
+      longitude,
+      speed,
+      heading,
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log(`📍 Delivery ${orderId} location updated: ${latitude}, ${longitude}`);
   });
   
   // Update location in real-time
@@ -110,19 +140,25 @@ const PORT = process.env.PORT || 5000;
 async function startServer() {
   try {
     // Try real database, fall back to mock if unavailable
-    try {
-      await sequelize.authenticate();
-      console.log('✅ Database connection established successfully.');
-      await sequelize.sync({ alter: true });
-      console.log('✅ Database synchronized.');
-    } catch (dbError) {
-      console.log('⚠️  Database unavailable, using in-memory mock for testing');
+    if (sequelize) {
+      try {
+        await sequelize.authenticate();
+        console.log('✅ Database connection established successfully.');
+        await sequelize.sync({ alter: true });
+        console.log('✅ Database synchronized.');
+      } catch (dbError: any) {
+        console.log('⚠️  Database unavailable, using in-memory mock for testing');
+        console.log('   Error:', dbError.message);
+      }
+    } else {
+      console.log('ℹ️  Using in-memory mock database (Sequelize not available)');
     }
     
     // Start server
     server.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`✅ Server running on http://localhost:${PORT}`);
       console.log(`📡 Socket.IO ready for real-time connections`);
+      console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
     });
   } catch (error) {
     console.error('❌ Unable to start server:', error);
