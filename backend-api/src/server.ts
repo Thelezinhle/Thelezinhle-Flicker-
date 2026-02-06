@@ -15,13 +15,8 @@ import deliveryRoutes from './routes/delivery.routes';
 // Load environment variables FIRST
 dotenv.config();
 
-// Import database (with fallback to mock)
-let sequelize: any = null;
-try {
-  sequelize = require('./models').default || require('./models');
-} catch (error) {
-  console.log('⚠️  Could not load Sequelize models, will use mock database');
-}
+// Import real database with initialization
+import sequelize, { initializeDatabase } from './models/database';
 
 const app = express();
 const server = http.createServer(app);
@@ -44,6 +39,12 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Middleware to inject io into request
+app.use((req: any, res, next) => {
+  req.io = io;
+  next();
+});
 
 // Rate limiting
 const apiLimiter = rateLimit({
@@ -139,19 +140,12 @@ const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   try {
-    // Try real database, fall back to mock if unavailable
-    if (sequelize) {
-      try {
-        await sequelize.authenticate();
-        console.log('✅ Database connection established successfully.');
-        await sequelize.sync({ alter: true });
-        console.log('✅ Database synchronized.');
-      } catch (dbError: any) {
-        console.log('⚠️  Database unavailable, using in-memory mock for testing');
-        console.log('   Error:', dbError.message);
-      }
-    } else {
-      console.log('ℹ️  Using in-memory mock database (Sequelize not available)');
+    // Initialize real database
+    const dbInitialized = await initializeDatabase();
+    
+    if (!dbInitialized) {
+      console.error('❌ Failed to initialize database. Exiting.');
+      process.exit(1);
     }
     
     // Start server
@@ -159,6 +153,7 @@ async function startServer() {
       console.log(`✅ Server running on http://localhost:${PORT}`);
       console.log(`📡 Socket.IO ready for real-time connections`);
       console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+      console.log(`💾 Database: PostgreSQL on ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || 5432}`);
     });
   } catch (error) {
     console.error('❌ Unable to start server:', error);
