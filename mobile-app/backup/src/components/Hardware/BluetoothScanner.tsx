@@ -1,1 +1,0 @@
-// BluetoothScanner component

@@ -1,80 +1,136 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import jwt from 'jsonwebtoken';
-import { User, Session } from '../models';
+import bcrypt from 'bcryptjs';
+import { User, Session } from '../models/database';
 
 const router = Router();
 
 /**
- * Register a new user
+ * Register a new user with email and password
  */
 router.post('/register', [
-  body('deviceId').notEmpty().isLength({ min: 5 }),
-  body('publicKey').notEmpty().isLength({ min: 50 })
+  body('email').isEmail().normalizeEmail(),
+  body('password').isLength({ min: 6 }),
+  body('name').notEmpty().trim(),
+  body('role').isIn(['client', 'driver'])
 ], async (req: Request, res: Response): Promise<any> => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { deviceId, publicKey } = req.body;
-
-    // Check if device already registered
-    const existingUser = await User.findOne({ where: { deviceId } });
-    if (existingUser) {
-      return res.status(409).json({
+      return res.status(400).json({ 
         success: false,
-        message: 'Device already registered'
+        message: errors.array().map(e => e.msg).join(', '),
+        errors: errors.array() 
       });
     }
 
+    const { email, password, name, role } = req.body;
+
+    // Check if email already registered
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: 'Email already registered. Please login instead.'
+      });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
     // Create new user
     const user = await User.create({
-      deviceId,
-      publicKey,
+      email,
+      password: hashedPassword,
+      name,
+      role,
       isVerified: false
+    });
+
+    // Generate session token
+    const sessionToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        role: user.role
+      },
+      process.env.JWT_SECRET || 'flicker_secret_key',
+      { expiresIn: '7d' }
+    );
+
+    // Create session
+    await Session.create({
+      userId: user.id,
+      sessionToken,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      status: 'active'
     });
 
     res.status(201).json({
       success: true,
       data: {
         userId: user.id,
-        deviceId: user.deviceId,
-        isVerified: user.isVerified
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        sessionToken
       },
-      message: 'User registered successfully'
+      message: 'Registration successful!'
     });
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to register user'
+      message: 'Failed to register. Please try again.'
     });
   }
 });
 
 /**
- * Login and generate session token
+ * Login with email and password
  */
 router.post('/login', [
-  body('userId').isUUID().notEmpty(),
-  body('deviceId').notEmpty().isLength({ min: 5 })
-], async (req: Request, res: Response) => {
+  body('email').isEmail().normalizeEmail(),
+  body('password').notEmpty(),
+  body('role').isIn(['client', 'driver'])
+], async (req: Request, res: Response): Promise<any> => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid email or password format',
+        errors: errors.array() 
+      });
     }
 
-    const { userId, deviceId } = req.body;
+    const { email, password, role } = req.body;
 
-    // Find user
-    const user = await User.findByPk(userId);
-    if (!user || user.deviceId !== deviceId) {
+    // Find user by email
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid email or password'
+      });
+    }
+
+    // Check if role matches
+    if (user.role !== role) {
+      return res.status(401).json({
+        success: false,
+        message: `This account is registered as a ${user.role}, not a ${role}`
+      });
+    }
+
+    // Verify password
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
       });
     }
 
@@ -82,17 +138,18 @@ router.post('/login', [
     const sessionToken = jwt.sign(
       {
         userId: user.id,
-        deviceId: user.deviceId
+        email: user.email,
+        role: user.role
       },
-      process.env.JWT_SECRET || 'default_secret',
-      { expiresIn: '24h' }
+      process.env.JWT_SECRET || 'flicker_secret_key',
+      { expiresIn: '7d' }
     );
 
     // Create session record
     const session = await Session.create({
       userId: user.id,
       sessionToken,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       status: 'active'
     });
 
@@ -100,18 +157,20 @@ router.post('/login', [
       success: true,
       data: {
         userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
         sessionId: session.id,
         sessionToken,
-        expiresAt: session.expiresAt,
-        deviceId: user.deviceId
+        expiresAt: session.expiresAt
       },
-      message: 'Login successful'
+      message: 'Login successful!'
     });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to login'
+      message: 'Failed to login. Please try again.'
     });
   }
 });
@@ -153,7 +212,7 @@ router.post('/verify', [
 
     // Verify JWT
     try {
-      jwt.verify(sessionToken, process.env.JWT_SECRET || 'default_secret');
+      jwt.verify(sessionToken, process.env.JWT_SECRET || 'flicker_secret_key');
     } catch (jwtError) {
       return res.status(401).json({
         success: false,
@@ -167,7 +226,9 @@ router.post('/verify', [
       success: true,
       data: {
         userId: user?.id,
-        deviceId: user?.deviceId,
+        email: user?.email,
+        name: user?.name,
+        role: user?.role,
         isVerified: user?.isVerified,
         expiresAt: session.expiresAt
       },

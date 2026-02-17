@@ -11,6 +11,12 @@ import authRoutes from './routes/auth.routes';
 import proximityRoutes from './routes/proximity.routes';
 import deviceRoutes from './routes/device.routes';
 import deliveryRoutes from './routes/delivery.routes';
+import deliveryRoutesV3 from './routes/delivery.routes.v3';
+import blockchainRoutes from './routes/blockchain.routes';
+import bluetoothRoutes from './routes/bluetooth.routes';
+import uwbRoutes from './routes/uwb.routes';
+import nfcRoutes from './routes/nfc.routes';
+import rangingRoutes from './routes/ranging.routes';
 
 // Load environment variables FIRST
 dotenv.config();
@@ -21,22 +27,43 @@ import sequelize, { initializeDatabase } from './models/database';
 const app = express();
 const server = http.createServer(app);
 
+// CORS configuration - support multiple origins for web + mobile
+const allowedOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',')
+  : [process.env.FRONTEND_URL || 'http://localhost:3000'];
+
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin matches any allowed origin or pattern
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed.startsWith('exp://')) return origin.startsWith('exp://');
+      return origin === allowed || origin.startsWith(allowed);
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.log(`CORS blocked origin: ${origin}`);
+      callback(null, true); // Still allow for now during development
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-session-token']
+};
+
 // Socket.IO for real-time communication
 const io = new Server(server, {
-  cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST'],
-    credentials: true
-  },
+  cors: corsOptions,
   transports: ['websocket', 'polling']
 });
 
 // Middleware
 app.use(helmet());
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
-}));
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -59,6 +86,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/proximity', proximityRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/delivery', deliveryRoutes);
+app.use('/api/delivery', deliveryRoutesV3); // New web-focused delivery routes
+app.use('/api/blockchain', blockchainRoutes); // Solana blockchain routes
+app.use('/api/bluetooth', bluetoothRoutes); // Bluetooth 6.0 ranging routes
+app.use('/api/uwb', uwbRoutes); // UWB ranging routes
+app.use('/api/nfc', nfcRoutes); // NFC verification routes
+app.use('/api/ranging', rangingRoutes); // Find Me / Live ranging routes
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -141,11 +174,17 @@ const PORT = process.env.PORT || 5000;
 async function startServer() {
   try {
     // Initialize real database
-    const dbInitialized = await initializeDatabase();
+    let dbInitialized = false;
+    try {
+      dbInitialized = await initializeDatabase();
+    } catch (dbError: any) {
+      console.error('⚠️ Database initialization failed:', dbError.message);
+      console.log('🔄 Server will continue without database (blockchain still works)');
+    }
     
     if (!dbInitialized) {
-      console.error('❌ Failed to initialize database. Exiting.');
-      process.exit(1);
+      console.warn('⚠️ Database not initialized - some features may not work');
+      console.log('🔗 Blockchain features will still function normally');
     }
     
     // Start server
@@ -153,7 +192,8 @@ async function startServer() {
       console.log(`✅ Server running on http://localhost:${PORT}`);
       console.log(`📡 Socket.IO ready for real-time connections`);
       console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
-      console.log(`💾 Database: PostgreSQL on ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || 5432}`);
+      console.log(`💾 Database: ${dbInitialized ? 'Connected' : 'Not connected (running in limited mode)'}`);
+      console.log(`🔗 Blockchain: Solana ${process.env.SOLANA_NETWORK || 'devnet'}`);
     });
   } catch (error) {
     console.error('❌ Unable to start server:', error);

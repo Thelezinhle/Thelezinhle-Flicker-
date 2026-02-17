@@ -1,0 +1,17 @@
+
+✅ Mock Backend API running on http://localhost:5000
+   Frontend: http://localhost:3000
+
+📦 Delivery tracking endpoints ready:
+   POST   /api/delivery/orders
+   POST   /api/delivery/orders/:orderId/location
+   GET    /api/delivery/orders/:orderId/track
+   GET    /api/delivery/orders/:orderId/history
+   PUT    /api/delivery/orders/:orderId/complete
+   GET    /api/delivery/active
+
+Register request: {
+  deviceId: 'device-1770299344117',
+  publicKey: '4zkk9zyqagdfpq63aedtn'
+}
+Login request: { userId: 'user-1770299347936', deviceId: 'device-1770299344117' }

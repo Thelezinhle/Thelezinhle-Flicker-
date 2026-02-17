@@ -4,35 +4,54 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Initialize Sequelize connection
-const sequelize = new Sequelize(
-  process.env.DB_NAME || 'flickersecure_db',
-  process.env.DB_USER || 'postgres',
-  process.env.DB_PASSWORD || 'securepassword123',
-  {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    dialect: 'postgres',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000
-    }
-  }
-);
+// Support DATABASE_URL (Render) or individual env vars (local Docker)
+const sequelize = process.env.DATABASE_URL
+  ? new Sequelize(process.env.DATABASE_URL, {
+      dialect: 'postgres',
+      logging: process.env.NODE_ENV === 'development' ? console.log : false,
+      dialectOptions: {
+        ssl: process.env.DB_SSL === 'true' ? {
+          require: true,
+          rejectUnauthorized: false
+        } : false
+      },
+      pool: {
+        max: 5,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      }
+    })
+  : new Sequelize(
+      process.env.DB_NAME || 'flickersecure_db',
+      process.env.DB_USER || 'postgres',
+      process.env.DB_PASSWORD || 'securepassword123',
+      {
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432'),
+        dialect: 'postgres',
+        logging: process.env.NODE_ENV === 'development' ? console.log : false,
+        pool: {
+          max: 5,
+          min: 0,
+          acquire: 30000,
+          idle: 10000
+        }
+      }
+    );
 
 // ============================================
 // 1. USER MODEL
 // ============================================
 export class User extends Model {
   public id!: string;
+  public email!: string;
+  public password!: string;
+  public name!: string;
+  public role!: 'client' | 'driver';
   public publicKey!: string;
   public deviceId!: string;
   public isVerified!: boolean;
-  public name!: string;
-  public email!: string;
-  public role!: 'delivery_person' | 'customer' | 'admin';
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -44,33 +63,39 @@ User.init(
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    email: {
+      type: DataTypes.STRING,
+      unique: true,
+      allowNull: false,
+      validate: {
+        isEmail: true
+      }
+    },
+    password: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    name: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    role: {
+      type: DataTypes.ENUM('client', 'driver'),
+      defaultValue: 'client',
+      allowNull: false
+    },
     publicKey: {
       type: DataTypes.TEXT,
-      allowNull: false
+      allowNull: true
     },
     deviceId: {
       type: DataTypes.STRING,
       unique: true,
-      allowNull: false,
-      index: true
+      allowNull: true
     },
     isVerified: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
-    },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: true
-    },
-    email: {
-      type: DataTypes.STRING,
-      unique: true,
-      allowNull: true,
-      index: true
-    },
-    role: {
-      type: DataTypes.ENUM('delivery_person', 'customer', 'admin'),
-      defaultValue: 'customer'
     }
   },
   {
@@ -110,8 +135,7 @@ Session.init(
     },
     sessionToken: {
       type: DataTypes.STRING(512),
-      unique: true,
-      index: true
+      unique: true
     },
     expiresAt: {
       type: DataTypes.DATE,
@@ -159,8 +183,7 @@ Delivery.init(
     orderId: {
       type: DataTypes.STRING,
       unique: true,
-      allowNull: false,
-      index: true
+      allowNull: false
     },
     deliveryPersonId: {
       type: DataTypes.UUID,
@@ -343,8 +366,7 @@ ProximityHandshake.init(
     handshakeCode: {
       type: DataTypes.STRING(6),
       unique: true,
-      allowNull: false,
-      index: true
+      allowNull: false
     },
     encryptedPayload: {
       type: DataTypes.TEXT,
@@ -414,8 +436,7 @@ NFTRecord.init(
     },
     transactionHash: {
       type: DataTypes.STRING,
-      allowNull: true,
-      index: true
+      allowNull: true
     },
     nftMintAddress: {
       type: DataTypes.STRING,
@@ -478,15 +499,15 @@ export async function initializeDatabase() {
   try {
     // Test connection
     await sequelize.authenticate();
-    console.log('✅ Database connected successfully');
+    console.log('Database connected successfully');
 
-    // Sync all models
-    await sequelize.sync({ alter: false });
-    console.log('✅ Database models synced');
+    // Sync all models - use alter:true to update schema
+    await sequelize.sync({ alter: true });
+    console.log('Database models synced');
 
     return true;
   } catch (error) {
-    console.error('❌ Database initialization failed:', error);
+    console.error('Database initialization failed:', error);
     return false;
   }
 }

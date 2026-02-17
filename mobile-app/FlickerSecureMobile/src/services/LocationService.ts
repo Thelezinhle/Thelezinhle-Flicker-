@@ -37,10 +37,11 @@ class LocationService {
   private isTracking = false;
   private locationUpdateCallbacks: ((location: LocationData) => void)[] = [];
   private backgroundTaskId: string | null = null;
+  private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
 
   private constructor() {
     // Subscribe to app state changes
-    AppState.addEventListener('change', this.handleAppStateChange);
+    this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
   }
 
   static getInstance(): LocationService {
@@ -308,7 +309,10 @@ class LocationService {
    */
   destroy(): void {
     this.stopTracking();
-    AppState.removeEventListener('change', this.handleAppStateChange);
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove();
+      this.appStateSubscription = null;
+    }
     this.locationUpdateCallbacks = [];
   }
 }

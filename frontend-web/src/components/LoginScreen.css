@@ -1,6 +1,6 @@
 .login-screen {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -18,7 +18,7 @@
 }
 
 .login-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
   color: white;
   padding: 40px 20px 30px;
   text-align: center;
@@ -48,12 +48,12 @@
 .login-content h2 {
   margin: 0 0 10px 0;
   font-size: 24px;
-  color: #333;
+  color: #1e3a5f;
 }
 
 .description {
   margin: 0 0 30px 0;
-  color: #666;
+  color: #5a7a9a;
   font-size: 14px;
 }
 
@@ -70,7 +70,7 @@
 .create-btn {
   width: 100%;
   padding: 16px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
   color: white;
   border: none;
   border-radius: 10px;
@@ -87,7 +87,7 @@
 
 .create-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 10px 25px rgba(26, 115, 232, 0.3);
 }
 
 .create-btn:disabled {
@@ -96,6 +96,69 @@
 
 .create-btn.loading {
   opacity: 0.8;
+}
+
+.create-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Role Selection */
+.role-selection {
+  margin-bottom: 25px;
+}
+
+.role-label {
+  font-weight: 600;
+  color: #1e3a5f;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+
+.role-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.role-btn {
+  background: #f0f7ff;
+  border: 2px solid #d0e3f7;
+  border-radius: 12px;
+  padding: 20px 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-btn:hover {
+  border-color: #1a73e8;
+  background: #e3f2fd;
+}
+
+.role-btn.selected {
+  border-color: #1a73e8;
+  background: linear-gradient(135deg, rgba(26, 115, 232, 0.1) 0%, rgba(13, 71, 161, 0.1) 100%);
+  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.2);
+}
+
+.role-icon {
+  font-size: 32px;
+}
+
+.role-text {
+  font-weight: 600;
+  font-size: 16px;
+  color: #1e3a5f;
+}
+
+.role-desc {
+  font-size: 11px;
+  color: #5a7a9a;
+  text-align: center;
 }
 
 .spinner {
@@ -136,19 +199,19 @@
 .feature p {
   margin: 0;
   font-size: 12px;
-  color: #555;
+  color: #5a7a9a;
   line-height: 1.4;
 }
 
 .feature strong {
-  color: #333;
+  color: #1e3a5f;
   display: block;
   margin-bottom: 4px;
 }
 
 .info-box {
-  background: #e8f4f8;
-  border-left: 4px solid #667eea;
+  background: #e3f2fd;
+  border-left: 4px solid #1a73e8;
   padding: 15px;
   border-radius: 6px;
   text-align: center;
@@ -157,7 +220,7 @@
 .info-box p {
   margin: 6px 0;
   font-size: 13px;
-  color: #333;
+  color: #1e3a5f;
 }
 
 @media (max-width: 480px) {
@@ -190,4 +253,95 @@
     padding: 14px 20px;
     font-size: 15px;
   }
+}
+
+/* Form Styles */
+.login-form,
+.register-form {
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 18px;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px 15px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  font-size: 15px;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.15);
+}
+
+.form-group input::placeholder {
+  color: #aaa;
+}
+
+/* Divider */
+.divider {
+  display: flex;
+  align-items: center;
+  margin: 25px 0;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e0e0e0;
+}
+
+.divider span {
+  padding: 0 15px;
+  color: #888;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Secondary Button */
+.secondary-btn {
+  width: 100%;
+  padding: 14px 24px;
+  background: white;
+  color: #1a73e8;
+  border: 2px solid #1a73e8;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-bottom: 20px;
+}
+
+.secondary-btn:hover {
+  background: rgba(26, 115, 232, 0.1);
+  transform: translateY(-1px);
+}
+
+/* Success Message */
+.success-message {
+  background: #d4edda;
+  border-left: 4px solid #28a745;
+  color: #155724;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
 }

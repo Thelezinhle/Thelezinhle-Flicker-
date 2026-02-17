@@ -120,6 +120,23 @@
   font-size: 13px;
   font-weight: 600;
   width: fit-content;
+  background-color: #9C27B0;
+}
+
+.status-badge.at_restaurant {
+  background-color: #FF6B6B;
+}
+
+.status-badge.picked_up {
+  background-color: #FFA500;
+}
+
+.status-badge.arriving {
+  background-color: #4CAF50;
+}
+
+.status-badge.completed {
+  background-color: #2196F3;
 }
 
 /* Metrics Grid */
@@ -218,6 +235,24 @@
   padding: 6px 0;
   font-size: 13px;
   color: #555;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.legend-dot.driver {
+  background: #FF6B6B;
+}
+
+.legend-dot.customer {
+  background: #4CAF50;
+}
+
+.legend-dot.restaurant {
+  background: #FF9800;
 }
 
 .legend-icon {

@@ -1,5 +1,24 @@
-import { ProximityHandshake } from '../models';
+import { ProximityHandshake, ProximityTracking } from '../models';
 import { EncryptionService } from './EncryptionService';
+
+// ============== Request/Response Types ==============
+
+export interface StartTrackingRequest {
+  target_user_id: string;
+  target_latitude: number;
+  target_longitude: number;
+}
+
+export interface TrackingStatus {
+  id: string;
+  user_id: string;
+  target_user_id: string;
+  current_distance: number;
+  phase: string;
+  technology: string;
+  status: string;
+  last_update: Date;
+}
 
 export class ProximityService {
   /**
@@ -168,5 +187,170 @@ export class ProximityService {
       pattern: binaryPattern,
       duration: binaryPattern.length * (1000 / frequency) // milliseconds
     };
+  }
+
+  // ============== Continuous Tracking Methods (from Go) ==============
+
+  /**
+   * Start proximity tracking session
+   */
+  static async startTracking(userId: string, req: StartTrackingRequest): Promise<TrackingStatus> {
+    const tracking = await ProximityTracking.create({
+      userId: userId,
+      targetUserId: req.target_user_id,
+      targetLatitude: req.target_latitude,
+      targetLongitude: req.target_longitude,
+      phase: 'gps',
+      status: 'active',
+      technology: 'gps',
+      currentDistance: 0,
+      lastUpdate: new Date()
+    });
+
+    return {
+      id: tracking.id,
+      user_id: tracking.userId,
+      target_user_id: tracking.targetUserId,
+      current_distance: 0,
+      phase: tracking.phase,
+      technology: tracking.technology,
+      status: tracking.status,
+      last_update: tracking.lastUpdate
+    };
+  }
+
+  /**
+   * Stop proximity tracking
+   */
+  static async stopTracking(trackingId: string): Promise<void> {
+    await ProximityTracking.update(
+      { 
+        status: 'completed',
+        completedAt: new Date()
+      },
+      { where: { id: trackingId } }
+    );
+  }
+
+  /**
+   * Get tracking status
+   */
+  static async getStatus(trackingId: string): Promise<TrackingStatus | null> {
+    const tracking = await ProximityTracking.findByPk(trackingId);
+    
+    if (!tracking) {
+      return null;
+    }
+
+    return {
+      id: tracking.id,
+      user_id: tracking.userId,
+      target_user_id: tracking.targetUserId,
+      current_distance: Number(tracking.currentDistance),
+      phase: tracking.phase,
+      technology: tracking.technology,
+      status: tracking.status,
+      last_update: tracking.lastUpdate
+    };
+  }
+
+  /**
+   * Update distance and phase based on current position
+   */
+  static async updateDistance(
+    trackingId: string, 
+    userLat: number, 
+    userLon: number
+  ): Promise<TrackingStatus | null> {
+    const tracking = await ProximityTracking.findByPk(trackingId);
+    
+    if (!tracking) {
+      return null;
+    }
+
+    // Calculate distance using Haversine formula
+    const distance = this.calculateDistance(
+      userLat, 
+      userLon, 
+      Number(tracking.targetLatitude), 
+      Number(tracking.targetLongitude)
+    );
+
+    // Determine phase and technology based on distance
+    const phase = this.determinePhase(distance);
+    const technology = this.selectTechnology(distance);
+
+    // Update tracking
+    await tracking.update({
+      currentDistance: distance,
+      phase: phase,
+      technology: technology,
+      lastUpdate: new Date()
+    });
+
+    return {
+      id: tracking.id,
+      user_id: tracking.userId,
+      target_user_id: tracking.targetUserId,
+      current_distance: distance,
+      phase: phase,
+      technology: technology,
+      status: tracking.status,
+      last_update: new Date()
+    };
+  }
+
+  /**
+   * Get all active tracking sessions for a user
+   */
+  static async getActiveTrackings(userId: string): Promise<TrackingStatus[]> {
+    const trackings = await ProximityTracking.findAll({
+      where: { 
+        userId: userId, 
+        status: 'active' 
+      }
+    });
+
+    return trackings.map(t => ({
+      id: t.id,
+      user_id: t.userId,
+      target_user_id: t.targetUserId,
+      current_distance: Number(t.currentDistance),
+      phase: t.phase,
+      technology: t.technology,
+      status: t.status,
+      last_update: t.lastUpdate
+    }));
+  }
+
+  /**
+   * Determine phase based on distance (meters)
+   */
+  static determinePhase(distance: number): 'gps' | 'discovery' | 'close_range' | 'nfc_ready' | 'verified' {
+    if (distance > 300) {
+      return 'gps';
+    } else if (distance > 50) {
+      return 'discovery';
+    } else if (distance > 0.1) {
+      return 'close_range';
+    } else if (distance > 0.001) {
+      return 'nfc_ready';
+    }
+    return 'verified';
+  }
+
+  /**
+   * Select best technology for given distance
+   */
+  static selectTechnology(distance: number): 'gps' | 'uwb' | 'pdr' | 'nfc' {
+    if (distance > 300) {
+      return 'gps';
+    } else if (distance > 50) {
+      return 'uwb'; // with bluetooth fallback
+    } else if (distance > 0.1) {
+      return 'pdr';
+    } else {
+      return 'nfc';
+    }
   }
 }

@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
-import { v4 as uuidv4 } from 'crypto';
+import crypto from 'crypto';
+
+// Generate UUID v4 using crypto
+const uuidv4 = (): string => crypto.randomUUID();
 
 const app = express();
 const PORT = 5000;

@@ -1,1 +1,0 @@
-// NFCManager component

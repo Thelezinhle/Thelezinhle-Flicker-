@@ -6,8 +6,8 @@
 
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: #f5f7fa;
-  color: #333;
+  background: #f0f7ff;
+  color: #1e3a5f;
 }
 
 .app {
@@ -20,7 +20,7 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
   color: white;
   font-size: 16px;
 }
@@ -52,10 +52,112 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #667eea;
+  background: #1a73e8;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #5568d3;
+  background: #1557b0;
+}
+
+/* Role Selection */
+.role-selection {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+  color: white;
+  padding: 20px;
+}
+
+.role-selection h1 {
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+}
+
+.role-selection > p {
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 40px;
+}
+
+.role-cards {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.role-card {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 30px;
+  width: 200px;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.role-card:hover {
+  transform: translateY(-5px);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.role-card .icon {
+  font-size: 2rem;
+  margin-bottom: 15px;
+  color: white;
+}
+
+.role-card h2 {
+  font-size: 1.3rem;
+  margin-bottom: 10px;
+}
+
+.role-card p {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.role-buttons {
+  margin-top: 40px;
+  display: flex;
+  gap: 15px;
+}
+
+.role-btn {
+  padding: 12px 24px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 1rem;
+  transition: background 0.2s;
+}
+
+.role-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.back-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  padding: 10px 20px;
+  background: #1a73e8;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: white;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.back-btn:hover {
+  background: #1557b0;
 }

@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "FlickerSecure",
+    "slug": "flicker-secure",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#667eea"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.flicker.secure",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We need your location to track deliveries and verify handoffs",
+        "NSLocationAlwaysUsageDescription": "We need your location to track deliveries in the background"
+      }
+    },
+    "android": {
+      "package": "com.flicker.secure",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/icon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    }
+  }
+}

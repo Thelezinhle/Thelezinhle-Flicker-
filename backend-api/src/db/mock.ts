@@ -62,6 +62,16 @@ export const mockDB = {
     return null;
   },
   
+  deleteSession: (sessionToken: string) => {
+    for (const [id, session] of sessions.entries()) {
+      if (session.sessionToken === sessionToken) {
+        sessions.delete(id);
+        return true;
+      }
+    }
+    return false;
+  },
+  
   // Handshake operations
   createHandshake: (data: any) => {
     const id = mockDB.generateId();

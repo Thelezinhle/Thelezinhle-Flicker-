@@ -11,6 +11,7 @@ import {
   LocationService,
   NFTService
 } from '../services/DatabaseService';
+import solanaService from '../services/SolanaService';
 
 const router = Router();
 
@@ -359,7 +360,7 @@ router.post(
       }
 
       const { deliveryId } = req.params;
-      const { userId } = req.body;
+      const { userId, latitude, longitude } = req.body;
 
       const delivery = await DeliveryService.findDeliveryById(deliveryId);
       if (!delivery) {
@@ -382,10 +383,49 @@ router.post(
         'completed'
       );
 
+      // Mint Proof of Presence NFT on Solana blockchain
+      let nftResult = null;
+      if (solanaService.isInitialized()) {
+        try {
+          // Get last known location if not provided
+          const lat = latitude || (delivery.endLocation as any)?.latitude || 0;
+          const lng = longitude || (delivery.endLocation as any)?.longitude || 0;
+
+          // Mint NFT on Solana
+          nftResult = await solanaService.mintNFT({
+            deliveryId,
+            userId,
+            latitude: lat,
+            longitude: lng,
+          });
+
+          // Update NFT record in database
+          const nftRecord = await NFTService.findNFTByDelivery(deliveryId);
+          if (nftRecord) {
+            await NFTService.updateNFTStatus(
+              nftRecord.id,
+              'minted',
+              nftResult.txHash,
+              nftResult.mint
+            );
+          }
+
+          console.log(`🔗 NFT minted for delivery ${deliveryId}: ${nftResult.txHash}`);
+        } catch (nftError) {
+          console.error('NFT minting failed (delivery still completed):', nftError);
+          // Don't fail the delivery completion if NFT minting fails
+        }
+      }
+
       return res.status(200).json({
         success: true,
-        data: completedDelivery,
-        message: 'Delivery completed successfully'
+        data: {
+          ...completedDelivery,
+          nft: nftResult
+        },
+        message: nftResult 
+          ? 'Delivery completed and Proof of Presence NFT minted on Solana!'
+          : 'Delivery completed successfully'
       });
     } catch (error) {
       console.error('Error completing delivery:', error);

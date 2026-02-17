@@ -4,9 +4,18 @@
  * Uses Leaflet.js for mapping and Socket.io for real-time updates
  */
 
+// Extend Window interface for Leaflet
+declare global {
+  interface Window {
+    L: any;
+  }
+}
+
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
+import { io, Socket } from 'socket.io-client';
 import './LiveDeliveryMap.css';
+import { API_BASE, SOCKET_URL } from '../config';
 
 interface DeliveryLocation {
   orderId: string;
@@ -30,7 +39,7 @@ interface DeliveryTracking {
 }
 
 interface Props {
-  orderId?: string;
+  orderId?: string
   onDeliveryComplete?: () => void;
 }
 
@@ -39,13 +48,83 @@ const LiveDeliveryMap: React.FC<Props> = ({
   onDeliveryComplete 
 }) => {
   const [delivery, setDelivery] = useState<DeliveryTracking | null>(null);
-  const [locationHistory, setLocationHistory] = useState<DeliveryLocation[]>([]);
+  const [_locationHistory, setLocationHistory] = useState<DeliveryLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const routePolylineRef = useRef<any>(null);
+
+  // Initialize WebSocket connection
+  useEffect(() => {
+    socketRef.current = io(SOCKET_URL, {
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5
+    });
+
+    // Listen for real-time location updates
+    socketRef.current.on('delivery:location-updated', (data: any) => {
+      console.log('Location update received:', data);
+      
+      // Update delivery with new location
+      if (data.deliveryId) {
+        setDelivery(prev => prev ? {
+          ...prev,
+          currentLocation: {
+            orderId: data.orderId,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            accuracy: null,
+            speed: data.speed || null,
+            heading: data.heading || null,
+            timestamp: Date.now()
+          },
+          status: data.status,
+          distanceToCustomer: parseFloat(data.distanceToEnd),
+          eta: parseInt(data.eta) || 0
+        } : null);
+
+        // Add to location history
+        setLocationHistory(prev => [{
+          orderId: data.orderId,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          accuracy: null,
+          speed: data.speed || null,
+          heading: data.heading || null,
+          timestamp: Date.now()
+        }, ...prev].slice(0, 200));
+      }
+    });
+
+    // Listen for specific delivery room updates
+    socketRef.current.on('location-changed', (data: any) => {
+      console.log('Room location update:', data);
+      if (data.status === 'completed') {
+        onDeliveryComplete?.();
+      }
+    });
+
+    socketRef.current.on('connect', () => {
+      console.log('Connected to real-time updates');
+      // Join delivery tracking room
+      if (orderId) {
+        socketRef.current?.emit('join-delivery', orderId);
+      }
+    });
+
+    socketRef.current.on('disconnect', () => {
+      console.log('Disconnected from real-time updates');
+    });
+
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, [orderId, onDeliveryComplete]);
 
   useEffect(() => {
     loadDeliveryTracking();
@@ -63,7 +142,7 @@ const LiveDeliveryMap: React.FC<Props> = ({
   const loadDeliveryTracking = async () => {
     try {
       const response = await axios.get(
-        `http://localhost:5000/api/delivery/orders/${orderId}/track`
+        `${API_BASE}/delivery/orders/${orderId}/track`
       );
       
       if (response.data.success) {
@@ -72,7 +151,7 @@ const LiveDeliveryMap: React.FC<Props> = ({
 
         // Load location history
         const historyResponse = await axios.get(
-          `http://localhost:5000/api/delivery/orders/${orderId}/history?limit=200`
+          `${API_BASE}/delivery/orders/${orderId}/history?limit=200`
         );
         if (historyResponse.data.success) {
           setLocationHistory(historyResponse.data.data.locations);
@@ -148,8 +227,8 @@ const LiveDeliveryMap: React.FC<Props> = ({
     L.marker([delivery.customerLocation.latitude, delivery.customerLocation.longitude], {
       icon: L.divIcon({
         className: 'map-marker customer-marker',
-        html: '📍',
-        iconSize: [30, 30],
+        html: '<div style="background:#4CAF50;width:14px;height:14px;border-radius:50%;border:2px solid white;"></div>',
+        iconSize: [18, 18],
       }),
     })
       .addTo(mapRef.current)
@@ -165,8 +244,8 @@ const LiveDeliveryMap: React.FC<Props> = ({
     L.marker([delivery.restaurantLocation.latitude, delivery.restaurantLocation.longitude], {
       icon: L.divIcon({
         className: 'map-marker restaurant-marker',
-        html: '🏪',
-        iconSize: [30, 30],
+        html: '<div style="background:#FF9800;width:14px;height:14px;border-radius:50%;border:2px solid white;"></div>',
+        iconSize: [18, 18],
       }),
     })
       .addTo(mapRef.current)
@@ -180,8 +259,6 @@ const LiveDeliveryMap: React.FC<Props> = ({
 
   const updateMapMarker = () => {
     if (!delivery || !mapRef.current || !markerRef.current) return;
-
-    const L = window.L;
 
     // Update delivery person marker position
     markerRef.current.setLatLng([
@@ -240,35 +317,20 @@ const LiveDeliveryMap: React.FC<Props> = ({
     document.head.appendChild(script);
   };
 
-  const getStatusBadgeColor = (status: string): string => {
-    switch (status) {
-      case 'at_restaurant':
-        return '#FF6B6B';
-      case 'picked_up':
-        return '#FFA500';
-      case 'arriving':
-        return '#4CAF50';
-      case 'completed':
-        return '#2196F3';
-      default:
-        return '#9C27B0';
-    }
-  };
-
   const getStatusLabel = (status: string): string => {
     switch (status) {
       case 'assigned':
-        return '📍 Heading to Restaurant';
+        return 'Heading to Restaurant';
       case 'at_restaurant':
-        return '🏪 At Restaurant';
+        return 'At Restaurant';
       case 'picked_up':
-        return '🚴 On the Way';
+        return 'On the Way';
       case 'arriving':
-        return '📌 Arriving Soon';
+        return 'Arriving Soon';
       case 'completed':
-        return '✅ Delivered';
+        return 'Delivered';
       default:
-        return '⏳ Processing';
+        return 'PROCESSING';
     }
   };
 
@@ -287,7 +349,7 @@ const LiveDeliveryMap: React.FC<Props> = ({
     return (
       <div className="delivery-map-container">
         <div className="error-message">
-          <p>⚠️ {error || 'Failed to load delivery data'}</p>
+          <p>{error || 'Failed to load delivery data'}</p>
           <button onClick={loadDeliveryTracking}>Retry</button>
         </div>
       </div>
@@ -306,8 +368,7 @@ const LiveDeliveryMap: React.FC<Props> = ({
         <div className="info-header">
           <h2>Order #{orderId.slice(-6)}</h2>
           <div
-            className="status-badge"
-            style={{ backgroundColor: getStatusBadgeColor(delivery.status) }}
+            className={`status-badge ${delivery.status}`}
           >
             {getStatusLabel(delivery.status)}
           </div>
@@ -316,7 +377,7 @@ const LiveDeliveryMap: React.FC<Props> = ({
         {/* Key Metrics */}
         <div className="metrics-grid">
           <div className="metric-card">
-            <div className="metric-icon">⏱️</div>
+            <div className="metric-icon">T</div>
             <div className="metric-content">
               <div className="metric-label">ETA</div>
               <div className="metric-value">{etaMinutes} min</div>
@@ -324,9 +385,9 @@ const LiveDeliveryMap: React.FC<Props> = ({
           </div>
 
           <div className="metric-card">
-            <div className="metric-icon">📍</div>
+            <div className="metric-icon">D</div>
             <div className="metric-content">
-              <div className="metric-label">Distance</div>
+              <div className="metric-label">DISTANCE</div>
               <div className="metric-value">
                 {(delivery.distanceToCustomer / 1000).toFixed(1)} km
               </div>
@@ -334,9 +395,9 @@ const LiveDeliveryMap: React.FC<Props> = ({
           </div>
 
           <div className="metric-card">
-            <div className="metric-icon">⚡</div>
+            <div className="metric-icon">S</div>
             <div className="metric-content">
-              <div className="metric-label">Speed</div>
+              <div className="metric-label">SPEED</div>
               <div className="metric-value">
                 {delivery.currentLocation.speed 
                   ? (delivery.currentLocation.speed * 3.6).toFixed(0)
@@ -350,19 +411,19 @@ const LiveDeliveryMap: React.FC<Props> = ({
         {/* Location Details */}
         <div className="location-details">
           <div className="detail-item">
-            <span className="detail-label">📍 Current Coordinates</span>
+            <span className="detail-label">Current Coordinates</span>
             <span className="detail-value">
               {delivery.currentLocation.latitude.toFixed(4)}, {delivery.currentLocation.longitude.toFixed(4)}
             </span>
           </div>
           <div className="detail-item">
-            <span className="detail-label">📊 Accuracy</span>
+            <span className="detail-label">Accuracy</span>
             <span className="detail-value">
               {delivery.currentLocation.accuracy ? `±${delivery.currentLocation.accuracy.toFixed(1)}m` : 'N/A'}
             </span>
           </div>
           <div className="detail-item">
-            <span className="detail-label">🧭 Heading</span>
+            <span className="detail-label">Heading</span>
             <span className="detail-value">
               {delivery.currentLocation.heading 
                 ? `${delivery.currentLocation.heading.toFixed(0)}°`
@@ -374,17 +435,17 @@ const LiveDeliveryMap: React.FC<Props> = ({
 
         {/* Legend */}
         <div className="map-legend">
-          <h4>Legend</h4>
+          <h4>LEGEND</h4>
           <div className="legend-item">
-            <span className="legend-icon" style={{ color: '#FF6B6B' }}>●</span>
+            <span className="legend-dot driver"></span>
             <span>Delivery Person</span>
           </div>
           <div className="legend-item">
-            <span className="legend-icon">📍</span>
+            <span className="legend-dot customer"></span>
             <span>Customer Location</span>
           </div>
           <div className="legend-item">
-            <span className="legend-icon">🏪</span>
+            <span className="legend-dot restaurant"></span>
             <span>Restaurant</span>
           </div>
         </div>

@@ -169,6 +169,63 @@ router.post('/verify', [
   }
 });
 
+/**
+ * Update current position and get distance + phase
+ * POST /api/proximity/update
+ * 
+ * Receives: latitude, longitude, tracking_id
+ * Returns: distance (meters), phase, technology
+ */
+router.post('/update', [
+  body('tracking_id').isUUID().withMessage('Valid tracking_id required'),
+  body('latitude').isFloat({ min: -90, max: 90 }).withMessage('Valid latitude required'),
+  body('longitude').isFloat({ min: -180, max: 180 }).withMessage('Valid longitude required')
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        success: false, 
+        errors: errors.array() 
+      });
+    }
+
+    const { tracking_id, latitude, longitude } = req.body;
+
+    const status = await ProximityService.updateDistance(
+      tracking_id,
+      latitude,
+      longitude
+    );
+
+    if (!status) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tracking session not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        tracking_id: status.id,
+        distance: status.current_distance,
+        phase: status.phase,
+        technology: status.technology,
+        status: status.status,
+        last_update: status.last_update
+      },
+      message: `Distance: ${status.current_distance.toFixed(2)}m, Phase: ${status.phase}`
+    });
+  } catch (error) {
+    console.error('Error updating proximity:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update proximity'
+    });
+  }
+});
+
 // Get Light-ID pattern for session
 router.get('/light-id/:sessionId', [
   param('sessionId').isUUID().notEmpty()
@@ -242,6 +299,185 @@ router.post('/complete', [
     res.status(500).json({
       success: false,
       message: 'Failed to complete handshake'
+    });
+  }
+});
+
+// ============== Continuous Tracking Routes (matching Go API) ==============
+
+/**
+ * Start proximity tracking
+ * POST /api/proximity/tracking/start
+ */
+router.post('/tracking/start', [
+  body('target_user_id').isUUID().notEmpty(),
+  body('target_latitude').isFloat({ min: -90, max: 90 }),
+  body('target_longitude').isFloat({ min: -180, max: 180 })
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    // Get user ID from auth or request
+    const userId = (req as any).user?.id || req.body.user_id;
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User ID required'
+      });
+    }
+
+    const status = await ProximityService.startTracking(userId, {
+      target_user_id: req.body.target_user_id,
+      target_latitude: req.body.target_latitude,
+      target_longitude: req.body.target_longitude
+    });
+
+    res.status(201).json({
+      success: true,
+      data: status,
+      message: 'Tracking started'
+    });
+  } catch (error) {
+    console.error('Error starting tracking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to start tracking'
+    });
+  }
+});
+
+/**
+ * Stop proximity tracking
+ * POST /api/proximity/tracking/stop
+ */
+router.post('/tracking/stop', [
+  body('tracking_id').isUUID().notEmpty()
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    await ProximityService.stopTracking(req.body.tracking_id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Tracking stopped'
+    });
+  } catch (error) {
+    console.error('Error stopping tracking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to stop tracking'
+    });
+  }
+});
+
+/**
+ * Get tracking status
+ * GET /api/proximity/tracking/:trackingId
+ */
+router.get('/tracking/:trackingId', [
+  param('trackingId').isUUID().notEmpty()
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const status = await ProximityService.getStatus(req.params.trackingId);
+
+    if (!status) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tracking not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: status
+    });
+  } catch (error) {
+    console.error('Error getting tracking status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get tracking status'
+    });
+  }
+});
+
+/**
+ * Update position and get distance
+ * POST /api/proximity/tracking/update
+ */
+router.post('/tracking/update', [
+  body('tracking_id').isUUID().notEmpty(),
+  body('latitude').isFloat({ min: -90, max: 90 }),
+  body('longitude').isFloat({ min: -180, max: 180 })
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const status = await ProximityService.updateDistance(
+      req.body.tracking_id,
+      req.body.latitude,
+      req.body.longitude
+    );
+
+    if (!status) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tracking not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: status
+    });
+  } catch (error) {
+    console.error('Error updating distance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update distance'
+    });
+  }
+});
+
+/**
+ * Get all active trackings for user
+ * GET /api/proximity/tracking/active
+ */
+router.get('/tracking/active/:userId', [
+  param('userId').isUUID().notEmpty()
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const trackings = await ProximityService.getActiveTrackings(req.params.userId);
+
+    res.status(200).json({
+      success: true,
+      data: { trackings }
+    });
+  } catch (error) {
+    console.error('Error getting active trackings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get active trackings'
     });
   }
 });

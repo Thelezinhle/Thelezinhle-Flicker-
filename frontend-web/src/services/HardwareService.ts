@@ -1,7 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 import axios from 'axios';
+import { API_BASE, SOCKET_URL } from '../config';
 
-const API_URL = (window as any).REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = API_BASE;
 
 export class HardwareService {
   private static instance: HardwareService;
@@ -73,9 +74,7 @@ export class HardwareService {
    * Initialize WebSocket connection for real-time updates
    */
   connectWebSocket(sessionId: string): void {
-    const socketUrl = (window as any).REACT_APP_WS_URL || 'http://localhost:5000';
-    
-    this.socket = io(socketUrl, {
+    this.socket = io(SOCKET_URL, {
       transports: ['websocket'],
       query: { sessionId }
     });

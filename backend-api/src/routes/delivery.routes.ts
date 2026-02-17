@@ -14,18 +14,57 @@ const activeDeliveries = new Map<string, any>();
 const locationHistory = new Map<string, any[]>();
 
 /**
+ * Get all deliveries (for driver portal)
+ * GET /api/delivery/list
+ */
+router.get('/list', async (req: Request, res: Response) => {
+  try {
+    const deliveries = Array.from(activeDeliveries.values());
+    return res.json({
+      success: true,
+      data: deliveries
+    });
+  } catch (error) {
+    console.error('Error listing deliveries:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to list deliveries'
+    });
+  }
+});
+
+/**
+ * Get active deliveries
+ * GET /api/delivery/active
+ */
+router.get('/active', async (req: Request, res: Response) => {
+  try {
+    const deliveries = Array.from(activeDeliveries.values())
+      .filter((d: any) => d.status !== 'delivered' && d.status !== 'cancelled');
+    return res.json({
+      success: true,
+      data: { deliveries }
+    });
+  } catch (error) {
+    console.error('Error listing active deliveries:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to list active deliveries'
+    });
+  }
+});
+
+/**
  * Create a new delivery order and start tracking
  * POST /api/delivery/orders
+ * Simplified endpoint for web dashboard
  */
 router.post('/orders', [
-  body('orderId').notEmpty(),
-  body('deliveryPersonId').isUUID().notEmpty(),
-  body('customerId').isUUID().notEmpty(),
-  body('customerLocation.latitude').isFloat({ min: -90, max: 90 }),
-  body('customerLocation.longitude').isFloat({ min: -180, max: 180 }),
-  body('restaurantLocation.latitude').isFloat({ min: -90, max: 90 }),
-  body('restaurantLocation.longitude').isFloat({ min: -180, max: 180 }),
-  body('estimatedDistance').isInt({ min: 0 })
+  body('customerId').notEmpty().withMessage('Customer ID is required'),
+  body('pickupAddress').notEmpty().withMessage('Pickup address is required'),
+  body('deliveryAddress').notEmpty().withMessage('Delivery address is required'),
+  body('recipientName').notEmpty().withMessage('Recipient name is required'),
+  body('recipientPhone').notEmpty().withMessage('Recipient phone is required')
 ], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
@@ -34,29 +73,48 @@ router.post('/orders', [
     }
 
     const {
-      orderId,
-      deliveryPersonId,
       customerId,
-      customerLocation,
-      restaurantLocation,
-      estimatedDistance
+      pickupAddress,
+      deliveryAddress,
+      packageDescription,
+      recipientName,
+      recipientPhone,
+      startLat,
+      startLng,
+      endLat,
+      endLng
     } = req.body;
+
+    // Generate unique order ID
+    const orderId = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
     const delivery = {
       orderId,
-      deliveryPersonId,
       customerId,
-      customerLocation,
-      restaurantLocation,
-      estimatedDistance,
-      status: 'assigned',
+      pickupAddress,
+      deliveryAddress,
+      packageDescription: packageDescription || 'Package',
+      recipientName,
+      recipientPhone,
+      pickupLocation: {
+        latitude: startLat || -26.2041,
+        longitude: startLng || 28.0473
+      },
+      deliveryLocation: {
+        latitude: endLat || -26.1952,
+        longitude: endLng || 28.0342
+      },
+      status: 'pending',
       createdAt: new Date(),
       updatedAt: new Date(),
+      driverId: null,
       locations: []
     };
 
     activeDeliveries.set(orderId, delivery);
     locationHistory.set(orderId, []);
+
+    console.log('Order created successfully:', orderId);
 
     return res.status(201).json({
       success: true,

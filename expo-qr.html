@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expo QR Code - FlickerSecure</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        h1 { color: #667eea; margin-bottom: 10px; }
+        p { color: #666; margin-bottom: 20px; }
+        #qrcode { margin: 20px auto; }
+        .url { 
+            background: #f0f0f0; 
+            padding: 15px 25px; 
+            border-radius: 10px; 
+            font-family: monospace;
+            font-size: 18px;
+            color: #333;
+            margin-top: 20px;
+        }
+        .instructions {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            color: #2e7d32;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 FlickerSecure</h1>
+        <p>Scan this QR code with Expo Go on your Android</p>
+        <div id="qrcode"></div>
+        <div class="url">exp://10.58.81.134:8081</div>
+        <div class="instructions">
+            <strong>Steps:</strong><br>
+            1. Open Expo Go app on Android<br>
+            2. Tap "Scan QR Code"<br>
+            3. Point camera at this QR code
+        </div>
+    </div>
+    <script>
+        QRCode.toCanvas(document.getElementById('qrcode'), 'exp://10.58.81.134:8081', {
+            width: 300,
+            margin: 2,
+            color: { dark: '#000000', light: '#ffffff' }
+        }, function (error) {
+            if (error) console.error(error);
+        });
+        
+        // Create canvas element
+        var canvas = document.createElement('canvas');
+        document.getElementById('qrcode').appendChild(canvas);
+        QRCode.toCanvas(canvas, 'exp://10.58.81.134:8081', {
+            width: 300,
+            margin: 2
+        });
+    </script>
+</body>
+</html>
