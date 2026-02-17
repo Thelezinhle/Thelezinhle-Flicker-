@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { User, Session } from '../models/database';
+import { mockDB, dbAvailable } from '../db/mock';
 
 const router = Router();
 
@@ -27,8 +28,55 @@ router.post('/register', [
 
     const { email, password, name, role } = req.body;
 
-    // Check if email already registered
-    const existingUser = await User.findOne({ where: { email } });
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Try real database first, fallback to mock
+    if (dbAvailable) {
+      // Check if email already registered
+      const existingUser = await User.findOne({ where: { email } });
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          message: 'Email already registered. Please login instead.'
+        });
+      }
+
+      // Create new user in real DB
+      const user = await User.create({
+        email,
+        password: hashedPassword,
+        name,
+        role,
+        isVerified: false
+      });
+
+      // Generate session token
+      const sessionToken = jwt.sign(
+        { userId: user.id, email: user.email, role: user.role },
+        process.env.JWT_SECRET || 'flicker_secret_key',
+        { expiresIn: '7d' }
+      );
+
+      await Session.create({
+        userId: user.id,
+        sessionToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        status: 'active'
+      });
+
+      return res.status(201).json({
+        success: true,
+        data: { userId: user.id, email: user.email, name: user.name, role: user.role, sessionToken },
+        message: 'Registration successful!'
+      });
+    }
+
+    // FALLBACK: Use in-memory mock database
+    console.log('Using in-memory database for registration');
+    
+    const existingUser = mockDB.findUserByEmail(email);
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -36,12 +84,7 @@ router.post('/register', [
       });
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create new user
-    const user = await User.create({
+    const user = mockDB.createUser({
       email,
       password: hashedPassword,
       name,
@@ -49,19 +92,13 @@ router.post('/register', [
       isVerified: false
     });
 
-    // Generate session token
     const sessionToken = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        role: user.role
-      },
+      { userId: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET || 'flicker_secret_key',
       { expiresIn: '7d' }
     );
 
-    // Create session
-    await Session.create({
+    mockDB.createSession({
       userId: user.id,
       sessionToken,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -70,13 +107,7 @@ router.post('/register', [
 
     res.status(201).json({
       success: true,
-      data: {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        sessionToken
-      },
+      data: { userId: user.id, email: user.email, name: user.name, role: user.role, sessionToken },
       message: 'Registration successful!'
     });
   } catch (error) {
@@ -108,45 +139,66 @@ router.post('/login', [
 
     const { email, password, role } = req.body;
 
-    // Find user by email
-    const user = await User.findOne({ where: { email } });
+    // Try real database first, fallback to mock
+    if (dbAvailable) {
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      }
+
+      if (user.role !== role) {
+        return res.status(401).json({ success: false, message: `This account is registered as a ${user.role}, not a ${role}` });
+      }
+
+      const isValidPassword = await bcrypt.compare(password, user.password);
+      if (!isValidPassword) {
+        return res.status(401).json({ success: false, message: 'Invalid email or password' });
+      }
+
+      const sessionToken = jwt.sign(
+        { userId: user.id, email: user.email, role: user.role },
+        process.env.JWT_SECRET || 'flicker_secret_key',
+        { expiresIn: '7d' }
+      );
+
+      const session = await Session.create({
+        userId: user.id,
+        sessionToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        status: 'active'
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: { userId: user.id, email: user.email, name: user.name, role: user.role, sessionId: session.id, sessionToken, expiresAt: session.expiresAt },
+        message: 'Login successful!'
+      });
+    }
+
+    // FALLBACK: Use in-memory mock database
+    console.log('Using in-memory database for login');
+    
+    const user = mockDB.findUserByEmail(email) as any;
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
+      return res.status(401).json({ success: false, message: 'Invalid email or password. Please register first.' });
     }
 
-    // Check if role matches
     if (user.role !== role) {
-      return res.status(401).json({
-        success: false,
-        message: `This account is registered as a ${user.role}, not a ${role}`
-      });
+      return res.status(401).json({ success: false, message: `This account is registered as a ${user.role}, not a ${role}` });
     }
 
-    // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    // Generate JWT token
     const sessionToken = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        role: user.role
-      },
+      { userId: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET || 'flicker_secret_key',
       { expiresIn: '7d' }
     );
 
-    // Create session record
-    const session = await Session.create({
+    const session = mockDB.createSession({
       userId: user.id,
       sessionToken,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -155,15 +207,7 @@ router.post('/login', [
 
     res.status(200).json({
       success: true,
-      data: {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        sessionId: session.id,
-        sessionToken,
-        expiresAt: session.expiresAt
-      },
+      data: { userId: user.id, email: user.email, name: user.name, role: user.role, sessionId: session.id, sessionToken, expiresAt: session.expiresAt },
       message: 'Login successful!'
     });
   } catch (error) {

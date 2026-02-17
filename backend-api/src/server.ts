@@ -171,20 +171,26 @@ io.on('connection', (socket) => {
 // Database connection and server start
 const PORT = process.env.PORT || 5000;
 
+// Import db available setter from mock
+import { setDbAvailable } from './db/mock';
+
 async function startServer() {
   try {
     // Initialize real database
     let dbInitialized = false;
     try {
       dbInitialized = await initializeDatabase();
+      setDbAvailable(dbInitialized);
     } catch (dbError: any) {
       console.error('⚠️ Database initialization failed:', dbError.message);
-      console.log('🔄 Server will continue without database (blockchain still works)');
+      console.log('🔄 Server will continue with in-memory database');
+      setDbAvailable(false);
     }
     
     if (!dbInitialized) {
-      console.warn('⚠️ Database not initialized - some features may not work');
-      console.log('🔗 Blockchain features will still function normally');
+      console.warn('⚠️ Database not initialized - using in-memory storage');
+      console.log('📝 Note: Data will be lost on server restart');
+      console.log('🔗 All features will work with in-memory storage');
     }
     
     // Start server

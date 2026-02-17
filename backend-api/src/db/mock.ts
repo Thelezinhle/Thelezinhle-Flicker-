@@ -3,6 +3,12 @@ const users = new Map();
 const sessions = new Map();
 const handshakes = new Map();
 
+// Track if the real database is available
+export let dbAvailable = false;
+export function setDbAvailable(available: boolean) {
+  dbAvailable = available;
+}
+
 export const mockDB = {
   users,
   sessions,
@@ -19,6 +25,13 @@ export const mockDB = {
   },
   
   findUserByPk: (id: string) => users.get(id) || null,
+  
+  findUserByEmail: (email: string) => {
+    for (const user of users.values()) {
+      if (user.email === email) return user;
+    }
+    return null;
+  },
   
   findUserByDeviceId: (deviceId: string) => {
     for (const user of users.values()) {
