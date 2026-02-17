@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
@@ -68,7 +68,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Middleware to inject io into request
-app.use((req: any, res, next) => {
+app.use((req: Request & { io?: Server }, res: Response, next: NextFunction) => {
   req.io = io;
   next();
 });
@@ -94,7 +94,7 @@ app.use('/api/nfc', nfcRoutes); // NFC verification routes
 app.use('/api/ranging', rangingRoutes); // Find Me / Live ranging routes
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ 
     status: 'healthy', 
     timestamp: new Date().toISOString(),
