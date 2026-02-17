@@ -11,6 +11,8 @@ export interface AuthRequest extends Request {
     deviceId: string;
     sessionId: string;
   };
+  headers: Request['headers'];
+  ip: string | undefined;
 }
 
 /**
