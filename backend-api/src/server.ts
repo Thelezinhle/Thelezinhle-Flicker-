@@ -131,7 +131,9 @@ app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ 
     status: 'healthy', 
     timestamp: new Date().toISOString(),
-    service: 'FlickerSecure Backend API'
+    service: 'FlickerSecure Backend API',
+    version: '2.0.0-inmemory',
+    database: !!(process.env.DATABASE_URL || process.env.DB_HOST) ? 'configured' : 'in-memory'
   });
 });
 
