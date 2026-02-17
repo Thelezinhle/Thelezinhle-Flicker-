@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { User, Session } from '../models/database';
-import { mockDB, dbAvailable } from '../db/mock';
+import { mockDB, isDbAvailable } from '../db/mock';
 
 const router = Router();
 
@@ -33,7 +33,7 @@ router.post('/register', [
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // Try real database first, fallback to mock
-    if (dbAvailable) {
+    if (isDbAvailable()) {
       // Check if email already registered
       const existingUser = await User.findOne({ where: { email } });
       if (existingUser) {
@@ -140,7 +140,7 @@ router.post('/login', [
     const { email, password, role } = req.body;
 
     // Try real database first, fallback to mock
-    if (dbAvailable) {
+    if (isDbAvailable()) {
       const user = await User.findOne({ where: { email } });
       if (!user) {
         return res.status(401).json({ success: false, message: 'Invalid email or password' });

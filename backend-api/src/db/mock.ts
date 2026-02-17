@@ -3,10 +3,14 @@ const users = new Map();
 const sessions = new Map();
 const handshakes = new Map();
 
-// Track if the real database is available
-export let dbAvailable = false;
+// Track if the real database is available - use object for reference
+const dbState = { available: false };
 export function setDbAvailable(available: boolean) {
-  dbAvailable = available;
+  dbState.available = available;
+  console.log(`Database availability set to: ${available}`);
+}
+export function isDbAvailable(): boolean {
+  return dbState.available;
 }
 
 export const mockDB = {
