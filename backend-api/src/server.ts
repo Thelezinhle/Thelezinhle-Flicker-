@@ -21,8 +21,14 @@ import rangingRoutes from './routes/ranging.routes';
 // Load environment variables FIRST
 dotenv.config();
 
-// Import real database with initialization
-import sequelize, { initializeDatabase } from './models/database';
+// Database import is optional - may fail without PostgreSQL
+let initializeDatabase: (() => Promise<boolean>) | null = null;
+try {
+  const dbModule = require('./models/database');
+  initializeDatabase = dbModule.initializeDatabase;
+} catch (e) {
+  console.log('Database module not available - using in-memory storage');
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -176,21 +182,25 @@ import { setDbAvailable } from './db/mock';
 
 async function startServer() {
   try {
-    // Initialize real database
+    // Initialize real database (optional)
     let dbInitialized = false;
-    try {
-      dbInitialized = await initializeDatabase();
-      setDbAvailable(dbInitialized);
-    } catch (dbError: any) {
-      console.error('⚠️ Database initialization failed:', dbError.message);
-      console.log('🔄 Server will continue with in-memory database');
+    if (initializeDatabase) {
+      try {
+        dbInitialized = await initializeDatabase();
+        setDbAvailable(dbInitialized);
+      } catch (dbError: any) {
+        console.error('⚠️ Database initialization failed:', dbError.message);
+        console.log('🔄 Server will continue with in-memory database');
+        setDbAvailable(false);
+      }
+    } else {
+      console.log('📝 No database configured - using in-memory storage');
       setDbAvailable(false);
     }
     
     if (!dbInitialized) {
-      console.warn('⚠️ Database not initialized - using in-memory storage');
-      console.log('📝 Note: Data will be lost on server restart');
-      console.log('🔗 All features will work with in-memory storage');
+      console.warn('⚠️ Using in-memory storage (data resets on restart)');
+      console.log('✅ All features work without PostgreSQL');
     }
     
     // Start server
