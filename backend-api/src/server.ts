@@ -6,28 +6,46 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 
-// Import routes
+// Load environment variables FIRST
+dotenv.config();
+
+// Import routes that don't need database
 import authRoutes from './routes/auth.routes';
 import proximityRoutes from './routes/proximity.routes';
 import deviceRoutes from './routes/device.routes';
-import deliveryRoutes from './routes/delivery.routes';
-import deliveryRoutesV3 from './routes/delivery.routes.v3';
-import blockchainRoutes from './routes/blockchain.routes';
 import bluetoothRoutes from './routes/bluetooth.routes';
 import uwbRoutes from './routes/uwb.routes';
 import nfcRoutes from './routes/nfc.routes';
 import rangingRoutes from './routes/ranging.routes';
 
-// Load environment variables FIRST
-dotenv.config();
+// Routes that need database - load conditionally
+let deliveryRoutes: any = null;
+let deliveryRoutesV3: any = null;
+let blockchainRoutes: any = null;
 
-// Database import is optional - may fail without PostgreSQL
+// Only load database-dependent routes if DATABASE_URL or DB_HOST is set
+if (process.env.DATABASE_URL || process.env.DB_HOST) {
+  try {
+    deliveryRoutes = require('./routes/delivery.routes').default;
+    deliveryRoutesV3 = require('./routes/delivery.routes.v3').default;
+    blockchainRoutes = require('./routes/blockchain.routes').default;
+    console.log('✅ Database routes loaded');
+  } catch (e) {
+    console.log('⚠️ Database routes not available');
+  }
+} else {
+  console.log('📝 No database configured - some routes disabled');
+}
+
+// Database initialization  
 let initializeDatabase: (() => Promise<boolean>) | null = null;
-try {
-  const dbModule = require('./models/database');
-  initializeDatabase = dbModule.initializeDatabase;
-} catch (e) {
-  console.log('Database module not available - using in-memory storage');
+if (process.env.DATABASE_URL || process.env.DB_HOST) {
+  try {
+    const dbModule = require('./models/database');
+    initializeDatabase = dbModule.initializeDatabase;
+  } catch (e) {
+    console.log('Database module not available');
+  }
 }
 
 const app = express();
@@ -91,9 +109,18 @@ app.use('/api/', apiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/proximity', proximityRoutes);
 app.use('/api/devices', deviceRoutes);
-app.use('/api/delivery', deliveryRoutes);
-app.use('/api/delivery', deliveryRoutesV3); // New web-focused delivery routes
-app.use('/api/blockchain', blockchainRoutes); // Solana blockchain routes
+
+// Database-dependent routes (only if loaded)
+if (deliveryRoutes) {
+  app.use('/api/delivery', deliveryRoutes);
+}
+if (deliveryRoutesV3) {
+  app.use('/api/delivery', deliveryRoutesV3);
+}
+if (blockchainRoutes) {
+  app.use('/api/blockchain', blockchainRoutes);
+}
+
 app.use('/api/bluetooth', bluetoothRoutes); // Bluetooth 6.0 ranging routes
 app.use('/api/uwb', uwbRoutes); // UWB ranging routes
 app.use('/api/nfc', nfcRoutes); // NFC verification routes
