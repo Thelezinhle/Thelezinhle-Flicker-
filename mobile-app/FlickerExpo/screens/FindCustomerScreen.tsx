@@ -278,10 +278,13 @@ const FindCustomerScreen: React.FC<FindCustomerScreenProps> = ({
       const session = await nativeUWBBridge.startSession(customerId, {
         onDistanceUpdated: (device) => {
           handleUWBUpdate({
+            targetDeviceId: customerId,
+            sourceDeviceId: userId,
             distance: device.distance,
             azimuth: device.direction || 0,
             elevation: device.elevation || null,
-            timestamp: Date.now(),
+            accuracy: 0.1,
+            timestamp: new Date(),
           });
         },
         onSessionError: (err) => {
@@ -297,18 +300,19 @@ const FindCustomerScreen: React.FC<FindCustomerScreenProps> = ({
       if (!session) {
         // Fall back to simulated UWB or GPS
         const simSession = await uwbService.startSession(orderId, customerId, handleUWBUpdate);
-        setSessionId(simSession);
+        setSessionId(simSession?.sessionId ?? null);
       }
     } else {
       // Use simulated UWB (for testing)
       const session = await uwbService.startSession(orderId, customerId, handleUWBUpdate);
-      setSessionId(session);
+      setSessionId(session?.sessionId ?? null);
     }
   };
 
   const handleUWBUpdate = (data: UWBRangingData) => {
-    const arrow = getArrowFromBearing(data.azimuth);
-    const direction = getDirectionFromBearing(data.azimuth);
+    const azimuth = data.azimuth ?? 0;
+    const arrow = getArrowFromBearing(azimuth);
+    const direction = getDirectionFromBearing(azimuth);
 
     let status: TrackingState['status'] = 'active';
     if (data.distance <= 0.3) {
@@ -322,7 +326,7 @@ const FindCustomerScreen: React.FC<FindCustomerScreenProps> = ({
 
     setTracking({
       distance: Math.round(data.distance * 100) / 100, // cm precision
-      bearing: data.azimuth,
+      bearing: azimuth,
       direction,
       arrow,
       status,
@@ -332,7 +336,7 @@ const FindCustomerScreen: React.FC<FindCustomerScreenProps> = ({
 
     // Animate arrow rotation
     Animated.spring(arrowRotation, {
-      toValue: data.azimuth,
+      toValue: azimuth,
       useNativeDriver: true,
       tension: 50,
       friction: 7,
