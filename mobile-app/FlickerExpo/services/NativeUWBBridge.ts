@@ -94,7 +94,7 @@ class NativeUWBBridge {
   private nativeModule: NINativeModule | AndroidUWBNativeModule | null = null;
   private isModuleAvailable: boolean = false;
   private currentSessionId: string | null = null;
-  private pollingInterval: NodeJS.Timeout | null = null;
+  private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private callbacks: NativeUWBCallbacks = {};
 
   constructor() {
