@@ -357,10 +357,9 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               message: data.data.message
             });
 
-            // Auto-stop if arrived (within 1 meter)
-            if (data.data.status === 'arrived') {
-              markArrived();
-            }
+            // DON'T auto-complete - driver must manually confirm they found customer
+            // Status 'arrived' just means "close enough to look around"
+            // The prominent "I Found Customer" button handles manual confirmation
             
             // Show Bluetooth prompt when within 15m for proximity verification
             if (data.data.distance <= 15 && bluetoothSupported && !bluetoothDevice && !showBluetoothPrompt) {
