@@ -500,13 +500,12 @@ router.post('/track/update', [
     
     // GPS REALITY CHECK:
     // Browser GPS is typically ±5-50m accuracy
-    // Two devices 1m apart can report positions 30m different due to GPS error
-    // So we use a reasonable threshold based on reported accuracy
+    // User wants strict 2m arrival threshold
     
-    // Arrival threshold = greater of: 10m OR half the combined GPS error
-    // This just shows "arrived" status - user must manually confirm
-    const arrivalThreshold = Math.max(10, combinedAccuracy * 0.5);
-    const approachingThreshold = Math.max(20, combinedAccuracy * 0.6);
+    // Arrival threshold = 2m (strict - user must be very close)
+    // Approaching threshold = 10m (getting close)
+    const arrivalThreshold = 2;
+    const approachingThreshold = 10;
     
     // Log for debugging
     console.log(`[RANGING] Order: ${session.orderId}`);
