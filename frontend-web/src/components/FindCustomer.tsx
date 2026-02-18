@@ -20,6 +20,7 @@ interface FindCustomerProps {
 interface CustomerLocation {
   latitude: number;
   longitude: number;
+  locationType?: 'live' | 'fixed';
   indoorDetails?: {
     building?: string;
     floor?: string;
@@ -47,6 +48,7 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   const [sharingLocation, setSharingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [myLocation, setMyLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [locationType, setLocationType] = useState<'live' | 'fixed'>('fixed'); // Default to stable fixed location
   
   // Driver state
   const [tracking, setTracking] = useState(false);
@@ -183,7 +185,8 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               orderId,
               latitude,
               longitude,
-              accuracy
+              accuracy,
+              locationType // Send live or fixed mode
             })
           });
 
@@ -191,7 +194,10 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
           
           if (data.success) {
             setBeaconActive(true);
-            startContinuousLocationUpdates();
+            // Only start continuous updates for live mode
+            if (locationType === 'live') {
+              startContinuousLocationUpdates();
+            }
           } else {
             setLocationError(data.message || 'Failed to start beacon');
             setSharingLocation(false);
@@ -480,7 +486,57 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
           {!beaconActive ? (
             <div className="beacon-start">
               <div className="beacon-icon pulse-animation">&#128205;</div>
-              <p>Tap the button below to share your exact location with the driver</p>
+              <p>Choose how to share your location with the driver:</p>
+              
+              {/* Location type toggle */}
+              <div style={{
+                display: 'flex',
+                gap: '10px',
+                marginBottom: '15px',
+                justifyContent: 'center'
+              }}>
+                <button
+                  onClick={() => setLocationType('fixed')}
+                  style={{
+                    padding: '10px 20px',
+                    border: locationType === 'fixed' ? '2px solid #10b981' : '2px solid #ddd',
+                    borderRadius: '8px',
+                    background: locationType === 'fixed' ? '#d1fae5' : '#f9fafb',
+                    color: locationType === 'fixed' ? '#065f46' : '#374151',
+                    cursor: 'pointer',
+                    fontWeight: locationType === 'fixed' ? 'bold' : 'normal'
+                  }}
+                >
+                  📍 Fixed Location
+                  <div style={{ fontSize: '10px', marginTop: '4px' }}>
+                    More stable & reliable
+                  </div>
+                </button>
+                <button
+                  onClick={() => setLocationType('live')}
+                  style={{
+                    padding: '10px 20px',
+                    border: locationType === 'live' ? '2px solid #3b82f6' : '2px solid #ddd',
+                    borderRadius: '8px',
+                    background: locationType === 'live' ? '#dbeafe' : '#f9fafb',
+                    color: locationType === 'live' ? '#1e40af' : '#374151',
+                    cursor: 'pointer',
+                    fontWeight: locationType === 'live' ? 'bold' : 'normal'
+                  }}
+                >
+                  🔴 Live Location
+                  <div style={{ fontSize: '10px', marginTop: '4px' }}>
+                    Updates as you move
+                  </div>
+                </button>
+              </div>
+              
+              <p style={{ fontSize: '12px', color: '#666', marginBottom: '15px' }}>
+                {locationType === 'fixed' 
+                  ? '✅ Your current spot will be shared (stable, recommended)' 
+                  : '⚠️ Location updates continuously (may jump around)'}
+              </p>
+              
               <button 
                 className="start-beacon-btn" 
                 onClick={startBeacon}
@@ -495,6 +551,20 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               <h3>Location Sharing Active</h3>
               <p>The driver can now see your exact location and navigate to you</p>
               
+              {/* Show location type badge */}
+              <div style={{
+                display: 'inline-block',
+                padding: '6px 12px',
+                borderRadius: '20px',
+                marginTop: '10px',
+                background: locationType === 'fixed' ? '#d1fae5' : '#dbeafe',
+                color: locationType === 'fixed' ? '#065f46' : '#1e40af',
+                fontWeight: 'bold',
+                fontSize: '12px'
+              }}>
+                {locationType === 'fixed' ? '📍 Fixed Location' : '🔴 Live Location'}
+              </div>
+              
               {/* Show customer's own GPS */}
               <div style={{
                 marginTop: '12px',
@@ -505,14 +575,14 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
                 color: '#1e3a5f',
                 textAlign: 'center'
               }}>
-                <strong>📍 Your GPS (LIVE):</strong><br/>
+                <strong>📍 Your GPS {locationType === 'live' ? '(LIVE)' : '(FIXED)'}:</strong><br/>
                 Lat: {myLocation?.lat?.toFixed(6) ?? 'Loading...'}<br/>
                 Lng: {myLocation?.lng?.toFixed(6) ?? 'Loading...'}
               </div>
               
               <div className="sharing-indicator">
                 <span className="dot"></span>
-                <span>Live sharing...</span>
+                <span>{locationType === 'live' ? 'Live sharing...' : 'Fixed location shared'}</span>
               </div>
               <button className="stop-beacon-btn" onClick={stopBeacon}>
                 Stop Sharing
@@ -568,6 +638,24 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               {trackingData.status === 'active' && 'Keep walking...'}
             </div>
 
+            {/* Customer location type badge */}
+            {trackingData.customerLocation?.locationType && (
+              <div style={{
+                display: 'inline-block',
+                padding: '6px 12px',
+                borderRadius: '20px',
+                marginTop: '10px',
+                background: trackingData.customerLocation.locationType === 'fixed' ? '#d1fae5' : '#dbeafe',
+                color: trackingData.customerLocation.locationType === 'fixed' ? '#065f46' : '#1e40af',
+                fontWeight: 'bold',
+                fontSize: '11px'
+              }}>
+                {trackingData.customerLocation.locationType === 'fixed' 
+                  ? '📍 Customer: Fixed Location (stable)' 
+                  : '🔴 Customer: Live Location (updates)'}
+              </div>
+            )}
+
             {/* GPS accuracy info */}
             {trackingData.accuracy && (
               <div className="gps-accuracy" style={{
@@ -605,7 +693,7 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
                 Lng: {myLocation?.lng?.toFixed(6) ?? 'Loading...'}
               </div>
               <div style={{ paddingLeft: '10px' }}>
-                <strong>📍 Customer GPS (LIVE):</strong><br/>
+                <strong>📍 Customer GPS ({trackingData.customerLocation?.locationType === 'live' ? 'LIVE' : 'FIXED'}):</strong><br/>
                 Lat: {trackingData.customerLocation?.latitude?.toFixed(6) ?? 'Unknown'}<br/>
                 Lng: {trackingData.customerLocation?.longitude?.toFixed(6) ?? 'Unknown'}
               </div>

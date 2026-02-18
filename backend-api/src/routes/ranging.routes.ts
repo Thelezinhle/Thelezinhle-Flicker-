@@ -21,6 +21,7 @@ interface CustomerBeacon {
   altitude?: number;
   accuracy: number;
   heading?: number;
+  locationType: 'live' | 'fixed'; // Customer location sharing mode
   indoorDetails?: {
     building?: string;
     floor?: string;
@@ -170,7 +171,7 @@ router.post('/beacon/start', [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { customerId, orderId, latitude, longitude, altitude, accuracy, indoorDetails } = req.body;
+    const { customerId, orderId, latitude, longitude, altitude, accuracy, indoorDetails, locationType } = req.body;
 
     const beacon: CustomerBeacon = {
       customerId,
@@ -179,6 +180,7 @@ router.post('/beacon/start', [
       longitude,
       altitude,
       accuracy: accuracy || 10,
+      locationType: locationType || 'fixed', // Default to fixed for stability
       indoorDetails,
       status: 'waiting',
       lastUpdate: new Date(),
@@ -362,7 +364,8 @@ router.post('/track/start', [
         customerLocation: {
           latitude: beacon.latitude,
           longitude: beacon.longitude,
-          indoorDetails: beacon.indoorDetails
+          indoorDetails: beacon.indoorDetails,
+          locationType: beacon.locationType // Tell driver if customer uses live or fixed
         },
         distance: Math.round(distance),
         bearing: Math.round(bearing),
@@ -427,15 +430,20 @@ router.post('/track/update', [
     };
 
     // Apply dead reckoning for smoother tracking
-    // Estimate customer's current position if they're moving
-    const customerTimeSinceUpdate = (Date.now() - new Date(beacon.lastUpdate).getTime()) / 1000;
-    const estimatedCustomerPos = applyDeadReckoning(
-      beacon.latitude, 
-      beacon.longitude, 
-      beacon.heading, 
-      0.5, // Assume slow walking if customer moving
-      customerTimeSinceUpdate
-    );
+    // Only apply if customer is using live location (they might be moving)
+    // Skip for fixed location - customer position is stable
+    let estimatedCustomerPos = { lat: beacon.latitude, lon: beacon.longitude };
+    
+    if (beacon.locationType === 'live') {
+      const customerTimeSinceUpdate = (Date.now() - new Date(beacon.lastUpdate).getTime()) / 1000;
+      estimatedCustomerPos = applyDeadReckoning(
+        beacon.latitude, 
+        beacon.longitude, 
+        beacon.heading, 
+        0.5, // Assume slow walking if customer moving
+        customerTimeSinceUpdate
+      );
+    }
 
     // Calculate new distance and bearing using estimated positions
     const distance = calculateDistance(latitude, longitude, estimatedCustomerPos.lat, estimatedCustomerPos.lon);
@@ -496,7 +504,8 @@ router.post('/track/update', [
         customerLocation: {
           latitude: beacon.latitude,
           longitude: beacon.longitude,
-          indoorDetails: beacon.indoorDetails
+          indoorDetails: beacon.indoorDetails,
+          locationType: beacon.locationType
         },
         status: session.status,
         eta: Math.ceil(distance / 1.4), // ETA in seconds at walking speed (1.4 m/s)
@@ -549,7 +558,8 @@ router.get('/track/:orderId', async (req: Request, res: Response): Promise<any> 
         customerLocation: {
           latitude: beacon.latitude,
           longitude: beacon.longitude,
-          indoorDetails: beacon.indoorDetails
+          indoorDetails: beacon.indoorDetails,
+          locationType: beacon.locationType
         },
         status: beacon.status,
         lastUpdate: beacon.lastUpdate,
