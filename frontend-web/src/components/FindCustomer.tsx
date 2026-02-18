@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { API_BASE, SOCKET_URL } from '../config';
+import webBluetoothService, { BluetoothDeviceInfo } from '../services/WebBluetoothService';
 import './FindCustomer.css';
 
 interface FindCustomerProps {
@@ -49,6 +50,11 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   const [tracking, setTracking] = useState(false);
   const [trackingData, setTrackingData] = useState<TrackingData | null>(null);
   const [_sessionId, setSessionId] = useState<string | null>(null);
+  
+  // Bluetooth state
+  const [bluetoothDevice, setBluetoothDevice] = useState<BluetoothDeviceInfo | null>(null);
+  const [bluetoothSupported, setBluetoothSupported] = useState(false);
+  const [bluetoothScanning, setBluetoothScanning] = useState(false);
   
   // Socket reference
   const socketRef = useRef<Socket | null>(null);
@@ -354,6 +360,30 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
     setSessionId(null);
   };
 
+  // Check Bluetooth support on mount
+  useEffect(() => {
+    const support = webBluetoothService.checkSupport();
+    setBluetoothSupported(support.supported);
+  }, []);
+
+  // Scan for customer's device via Bluetooth
+  const scanBluetooth = async () => {
+    setBluetoothScanning(true);
+    try {
+      const device = await webBluetoothService.scanForDevices();
+      if (device) {
+        setBluetoothDevice(device);
+        // Try to connect
+        await webBluetoothService.connect();
+      }
+    } catch (error: any) {
+      console.error('Bluetooth scan error:', error);
+      alert(error.message || 'Failed to scan for devices');
+    } finally {
+      setBluetoothScanning(false);
+    }
+  };
+
   const markArrived = async () => {
     try {
       await fetch(`${API_BASE}/ranging/arrived`, {
@@ -520,6 +550,41 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
                 )}
                 {trackingData.customerLocation.indoorDetails.floor && (
                   <span>Floor: {trackingData.customerLocation.indoorDetails.floor}</span>
+                )}
+              </div>
+            )}
+
+            {/* Bluetooth proximity verification */}
+            {bluetoothSupported && (
+              <div className="bluetooth-section" style={{
+                marginTop: '15px',
+                padding: '12px',
+                background: '#f0f4ff',
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <p style={{ fontSize: '12px', color: '#555', marginBottom: '8px' }}>
+                  🔵 Bluetooth Proximity (works in Chrome/Edge)
+                </p>
+                {bluetoothDevice ? (
+                  <div style={{ color: '#10b981', fontWeight: 'bold' }}>
+                    ✅ Connected to: {bluetoothDevice.name}
+                  </div>
+                ) : (
+                  <button
+                    onClick={scanBluetooth}
+                    disabled={bluetoothScanning}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {bluetoothScanning ? 'Scanning...' : '🔵 Scan for Customer'}
+                  </button>
                 )}
               </div>
             )}
