@@ -96,11 +96,18 @@ app.use((req: Request & { io?: Server }, res: Response, next: NextFunction) => {
   next();
 });
 
-// Rate limiting
+// Rate limiting - returns JSON for frontend compatibility
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+  max: 500, // Limit each IP to 500 requests per windowMs (increased for testing)
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      message: 'Too many requests. Please wait a few minutes and try again.'
+    });
+  }
 });
 app.use('/api/', apiLimiter);
 
@@ -129,7 +136,7 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'healthy', 
     timestamp: new Date().toISOString(),
     service: 'FlickerSecure Backend API',
-    version: '2.1.0-delivery-enabled',
+    version: '2.2.0-ratelimit-fix',
     database: !!(process.env.DATABASE_URL || process.env.DB_HOST) ? 'configured' : 'in-memory'
   });
 });
