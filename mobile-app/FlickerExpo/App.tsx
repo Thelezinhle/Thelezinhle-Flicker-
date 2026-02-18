@@ -17,6 +17,8 @@ import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
 import BluetoothScanScreen from './screens/BluetoothScanScreen';
 import bluetoothService, { BluetoothDevice } from './services/BluetoothService';
+import UWBScanScreen from './screens/UWBScanScreen';
+import uwbService from './services/UWBService';
 import { API_BASE, IS_PRODUCTION } from './config';
 
 // Log which environment we're using
@@ -69,6 +71,10 @@ export default function App() {
   const [nearbyDevices, setNearbyDevices] = useState<BluetoothDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<BluetoothDevice | null>(null);
   const [isBluetoothReady, setIsBluetoothReady] = useState(false);
+
+  // UWB State
+  const [showUWBScanner, setShowUWBScanner] = useState(false);
+  const [isUWBAvailable, setIsUWBAvailable] = useState(false);
 
   // ====== BLUETOOTH FUNCTIONS ======
   const initBluetooth = async () => {
@@ -496,6 +502,14 @@ export default function App() {
                   <Text style={styles.btnText}>🔵 Scan for Devices</Text>
                 </TouchableOpacity>
               )}
+
+              {/* UWB Precision Scanner */}
+              <TouchableOpacity 
+                style={[styles.bluetoothBtn, { backgroundColor: '#6366f1', marginTop: 10 }]} 
+                onPress={() => setShowUWBScanner(true)}
+              >
+                <Text style={styles.btnText}>📡 UWB Precision Find</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -623,6 +637,14 @@ export default function App() {
                   <Text style={styles.bluetoothSmallBtnText}>Scan for Sender</Text>
                 </TouchableOpacity>
               )}
+              
+              {/* UWB Precision - Receiver */}
+              <TouchableOpacity 
+                style={[styles.bluetoothSmallBtn, { backgroundColor: '#6366f1', marginTop: 8 }]} 
+                onPress={() => setShowUWBScanner(true)}
+              >
+                <Text style={styles.bluetoothSmallBtnText}>📡 UWB Precision Find</Text>
+              </TouchableOpacity>
             </View>
             
             <TouchableOpacity
@@ -676,6 +698,19 @@ export default function App() {
           onDeviceSelect={handleDeviceSelect}
           targetDeviceId={activeDelivery?.id}
           onClose={() => setShowBluetoothScanner(false)}
+        />
+      </Modal>
+
+      {/* UWB Scanner Modal */}
+      <Modal
+        visible={showUWBScanner}
+        animationType="slide"
+        onRequestClose={() => setShowUWBScanner(false)}
+      >
+        <UWBScanScreen
+          targetDeviceId={activeDelivery?.id || ''}
+          deliveryId={activeDelivery?.id || ''}
+          onClose={() => setShowUWBScanner(false)}
         />
       </Modal>
     </View>
