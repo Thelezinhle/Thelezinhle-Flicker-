@@ -96,7 +96,7 @@ class UWBService {
   private rangingCallback: ((data: UWBRangingData) => void) | null = null;
 
   // Simulated ranging for demo (when real UWB not available)
-  private simulationInterval: NodeJS.Timeout | null = null;
+  private simulationInterval: ReturnType<typeof setInterval> | null = null;
   private useSimulation: boolean = false;
 
   constructor() {
