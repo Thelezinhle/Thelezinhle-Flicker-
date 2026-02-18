@@ -494,17 +494,31 @@ router.post('/track/update', [
     session.lastUpdate = new Date();
 
     // Calculate combined GPS accuracy (both driver and customer)
-    const combinedAccuracy = (accuracy || 10) + (beacon.accuracy || 10);
+    const driverAccuracy = accuracy || 15;  // Default to 15m if not provided
+    const customerAccuracy = beacon.accuracy || 15;
+    const combinedAccuracy = driverAccuracy + customerAccuracy;
+    
+    // GPS REALITY CHECK:
+    // Browser GPS is typically ±5-50m accuracy
+    // Two devices 1m apart can report positions 30m different due to GPS error
+    // So we use a GENEROUS arrival threshold based on reported accuracy
+    
+    // Arrival threshold = greater of: 15m OR half the combined GPS error
+    // This prevents "stuck at Xm" when devices are actually together
+    const arrivalThreshold = Math.max(15, combinedAccuracy * 0.5);
+    const approachingThreshold = Math.max(30, combinedAccuracy * 0.75);
+    
+    // Log for debugging
+    console.log(`[RANGING] Order: ${session.orderId}`);
+    console.log(`  Driver GPS: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${driverAccuracy}m)`);
+    console.log(`  Customer GPS: ${beacon.latitude.toFixed(6)}, ${beacon.longitude.toFixed(6)} (±${customerAccuracy}m)`);
+    console.log(`  Calculated: ${distance.toFixed(1)}m | Arrival threshold: ${arrivalThreshold.toFixed(0)}m`);
     
     // Update status based on distance WITH GPS accuracy consideration
-    // If within combined accuracy threshold, consider "arrived"
-    // This accounts for GPS jitter that prevents reaching exactly 0m
-    const arrivalThreshold = Math.max(1, Math.min(combinedAccuracy * 0.5, 5)); // 1-5m based on accuracy
-    
     if (distance <= arrivalThreshold) {
       session.status = 'arrived';
-    } else if (distance <= 10) {
-      session.status = 'approaching';  // Within 10 meters = very close
+    } else if (distance <= approachingThreshold) {
+      session.status = 'approaching';  // Within approaching threshold
     } else {
       session.status = 'active';
     }

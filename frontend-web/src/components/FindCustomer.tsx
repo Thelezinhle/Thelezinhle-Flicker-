@@ -651,12 +651,51 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               <span className="direction-text">{trackingData.direction}</span>
             </div>
 
+            {/* GPS Reality Warning - shows when distance seems stuck */}
+            {trackingData.distance > 0 && trackingData.distance <= 50 && (
+              <div style={{
+                marginTop: '10px',
+                padding: '10px',
+                background: '#fef3c7',
+                border: '1px solid #f59e0b',
+                borderRadius: '8px',
+                fontSize: '11px',
+                color: '#92400e',
+                textAlign: 'center'
+              }}>
+                <strong>GPS shows {trackingData.distance}m</strong> but this may be inaccurate.<br/>
+                If you can <strong>see the customer</strong>, tap "I Found Customer" below!
+              </div>
+            )}
+
             {/* Status message */}
             <div className={`status-message ${trackingData.status}`}>
               {trackingData.status === 'arrived' && '✅ You have arrived! Look around for the customer.'}
-              {trackingData.status === 'approaching' && '🔥 Getting close! Customer is nearby.'}
-              {trackingData.status === 'active' && 'Keep walking...'}
+              {trackingData.status === 'approaching' && '🔥 Getting close! Look around for the customer.'}
+              {trackingData.status === 'active' && 'Keep walking in the direction shown...'}
             </div>
+
+            {/* PROMINENT "I Found Customer" Button when close */}
+            {trackingData.distance <= 50 && (
+              <button
+                onClick={markArrived}
+                style={{
+                  marginTop: '15px',
+                  padding: '15px 30px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  width: '100%',
+                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
+                }}
+              >
+                👋 I Found The Customer!
+              </button>
+            )}
 
             {/* Customer location type badge */}
             {trackingData.customerLocation && (
