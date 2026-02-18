@@ -136,7 +136,7 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'healthy', 
     timestamp: new Date().toISOString(),
     service: 'FlickerSecure Backend API',
-    version: '2.2.0-ratelimit-fix',
+    version: '2.3.0-precision-tracking',
     database: !!(process.env.DATABASE_URL || process.env.DB_HOST) ? 'configured' : 'in-memory'
   });
 });

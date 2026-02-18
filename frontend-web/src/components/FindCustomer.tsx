@@ -284,60 +284,67 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   };
 
   const startContinuousTracking = (sid: string) => {
-    // Update every 2 seconds
-    updateIntervalRef.current = setInterval(async () => {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude, accuracy, heading, speed } = position.coords;
-          
-          // Update driver's own location
-          setMyLocation({ lat: latitude, lng: longitude });
+    // Use watchPosition for continuous real-time updates (like customer beacon)
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      async (position) => {
+        const { latitude, longitude, accuracy, heading, speed } = position.coords;
+        
+        // Update driver's own location
+        setMyLocation({ lat: latitude, lng: longitude });
 
-          try {
-            const response = await fetch(`${API_BASE}/ranging/track/update`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                sessionId: sid,
-                latitude,
-                longitude,
-                accuracy,
-                heading,
-                speed
-              })
+        try {
+          const response = await fetch(`${API_BASE}/ranging/track/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: sid,
+              latitude,
+              longitude,
+              accuracy,
+              heading,
+              speed
+            })
+          });
+
+          const data = await response.json();
+          
+          if (data.success) {
+            setTrackingData({
+              distance: data.data.distance,
+              bearing: data.data.bearing,
+              direction: data.data.direction,
+              arrow: data.data.arrow,
+              status: data.data.status,
+              customerLocation: data.data.customerLocation,
+              message: data.data.message
             });
 
-            const data = await response.json();
-            
-            if (data.success) {
-              setTrackingData({
-                distance: data.data.distance,
-                bearing: data.data.bearing,
-                direction: data.data.direction,
-                arrow: data.data.arrow,
-                status: data.data.status,
-                customerLocation: data.data.customerLocation,
-                message: data.data.message
-              });
-
-              // Auto-stop if arrived
-              if (data.data.status === 'arrived') {
-                markArrived();
-              }
+            // Auto-stop if arrived (within 1 meter)
+            if (data.data.status === 'arrived') {
+              markArrived();
             }
-          } catch (error) {
-            console.error('Error updating tracking:', error);
           }
-        },
-        (error) => {
-          console.error('Watch position error:', error);
-        },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-      );
-    }, 2000);
+        } catch (error) {
+          console.error('Error updating tracking:', error);
+        }
+      },
+      (error) => {
+        console.error('Watch position error:', error);
+      },
+      { 
+        enableHighAccuracy: true, 
+        timeout: 5000, 
+        maximumAge: 0 // Always get fresh position
+      }
+    );
   };
 
   const stopTracking = () => {
+    // Stop watchPosition
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
     if (updateIntervalRef.current) {
       clearInterval(updateIntervalRef.current);
       updateIntervalRef.current = null;

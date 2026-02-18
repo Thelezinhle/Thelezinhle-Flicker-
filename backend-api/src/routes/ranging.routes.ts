@@ -96,6 +96,40 @@ function getArrowFromBearing(bearing: number): string {
 }
 
 /**
+ * Dead Reckoning - Estimate current position based on last position, heading, and speed
+ * This smooths out GPS updates and provides better tracking when GPS is delayed
+ */
+function applyDeadReckoning(
+  lastLat: number, 
+  lastLon: number, 
+  heading: number | undefined, 
+  speed: number | undefined, 
+  elapsedSeconds: number
+): { lat: number; lon: number } {
+  // If no heading/speed data, return original position
+  if (!heading || !speed || speed < 0.1 || elapsedSeconds > 10) {
+    return { lat: lastLat, lon: lastLon };
+  }
+  
+  // Calculate distance traveled (speed is in m/s)
+  const distanceTraveled = speed * elapsedSeconds;
+  
+  // Convert heading to radians (heading is in degrees, 0 = North)
+  const headingRad = heading * Math.PI / 180;
+  
+  // Calculate lat/lon change
+  // 1 degree of latitude = ~111,111 meters
+  // 1 degree of longitude = ~111,111 * cos(latitude) meters
+  const deltaLat = (distanceTraveled * Math.cos(headingRad)) / 111111;
+  const deltaLon = (distanceTraveled * Math.sin(headingRad)) / (111111 * Math.cos(lastLat * Math.PI / 180));
+  
+  return {
+    lat: lastLat + deltaLat,
+    lon: lastLon + deltaLon
+  };
+}
+
+/**
  * Customer starts "I'm waiting" beacon
  * POST /api/ranging/beacon/start
  */
@@ -363,19 +397,30 @@ router.post('/track/update', [
       accuracy: accuracy || 10
     };
 
-    // Calculate new distance and bearing
-    const distance = calculateDistance(latitude, longitude, beacon.latitude, beacon.longitude);
-    const bearing = calculateBearing(latitude, longitude, beacon.latitude, beacon.longitude);
+    // Apply dead reckoning for smoother tracking
+    // Estimate customer's current position if they're moving
+    const customerTimeSinceUpdate = (Date.now() - new Date(beacon.lastUpdate).getTime()) / 1000;
+    const estimatedCustomerPos = applyDeadReckoning(
+      beacon.latitude, 
+      beacon.longitude, 
+      beacon.heading, 
+      0.5, // Assume slow walking if customer moving
+      customerTimeSinceUpdate
+    );
+
+    // Calculate new distance and bearing using estimated positions
+    const distance = calculateDistance(latitude, longitude, estimatedCustomerPos.lat, estimatedCustomerPos.lon);
+    const bearing = calculateBearing(latitude, longitude, estimatedCustomerPos.lat, estimatedCustomerPos.lon);
 
     session.distance = distance;
     session.bearing = bearing;
     session.lastUpdate = new Date();
 
-    // Update status based on distance
-    if (distance < 5) {
+    // Update status based on distance - use 1 meter for arrived (as requested)
+    if (distance <= 1) {
       session.status = 'arrived';
-    } else if (distance < 50) {
-      session.status = 'approaching';
+    } else if (distance <= 10) {
+      session.status = 'approaching';  // Within 10 meters = very close
     } else {
       session.status = 'active';
     }
@@ -396,14 +441,17 @@ router.post('/track/update', [
         direction: getDirectionFromBearing(bearing),
         arrow: getArrowFromBearing(bearing),
         status: session.status,
-        eta: Math.ceil(distance / 1.4 / 60) // Assuming 1.4 m/s walking speed
+        eta: Math.ceil(distance / 1.4) // Seconds at walking speed
       });
     }
+
+    // Format distance - show decimal when within 10m for precision
+    const displayDistance = distance <= 10 ? distance.toFixed(1) : Math.round(distance).toString();
 
     return res.json({
       success: true,
       data: {
-        distance: Math.round(distance),
+        distance: distance <= 10 ? parseFloat(distance.toFixed(1)) : Math.round(distance),
         bearing: Math.round(bearing),
         direction: getDirectionFromBearing(bearing),
         arrow: getArrowFromBearing(bearing),
@@ -413,12 +461,12 @@ router.post('/track/update', [
           indoorDetails: beacon.indoorDetails
         },
         status: session.status,
-        eta: distance < 100 ? Math.ceil(distance / 1.4 / 60) : null, // ETA in minutes if close
+        eta: Math.ceil(distance / 1.4), // ETA in seconds at walking speed (1.4 m/s)
         message: session.status === 'arrived' 
-          ? 'You have arrived!' 
+          ? 'You have arrived! Look around for the customer.'
           : session.status === 'approaching'
-            ? `Getting close! ${Math.round(distance)}m away`
-            : `${Math.round(distance)}m to customer`
+            ? `Almost there! ${displayDistance}m away - look around!`
+            : `${displayDistance}m to customer - keep walking ${getDirectionFromBearing(bearing)}`
       }
     });
   } catch (error) {
