@@ -60,6 +60,8 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   const [bluetoothDevice, setBluetoothDevice] = useState<BluetoothDeviceInfo | null>(null);
   const [bluetoothSupported, setBluetoothSupported] = useState(false);
   const [bluetoothScanning, setBluetoothScanning] = useState(false);
+  const [bluetoothProximity, setBluetoothProximity] = useState<'connected' | 'disconnected' | 'scanning' | null>(null);
+  const [showBluetoothPrompt, setShowBluetoothPrompt] = useState(false);
   
   // Socket reference
   const socketRef = useRef<Socket | null>(null);
@@ -359,6 +361,11 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
             if (data.data.status === 'arrived') {
               markArrived();
             }
+            
+            // Show Bluetooth prompt when within 15m for proximity verification
+            if (data.data.distance <= 15 && bluetoothSupported && !bluetoothDevice && !showBluetoothPrompt) {
+              setShowBluetoothPrompt(true);
+            }
           }
         } catch (error) {
           console.error('Error updating tracking:', error);
@@ -399,16 +406,31 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   // Scan for customer's device via Bluetooth
   const scanBluetooth = async () => {
     setBluetoothScanning(true);
+    setBluetoothProximity('scanning');
+    setShowBluetoothPrompt(false);
     try {
       const device = await webBluetoothService.scanForDevices();
       if (device) {
         setBluetoothDevice(device);
         // Try to connect
-        await webBluetoothService.connect();
+        const connected = await webBluetoothService.connect();
+        if (connected) {
+          setBluetoothProximity('connected');
+          // Bluetooth connected = within ~10m, likely within 1-5m for reliable connection
+          alert('✅ Bluetooth connected! Customer is very close (within 5-10m). Look around!');
+        } else {
+          setBluetoothProximity('disconnected');
+        }
+      } else {
+        setBluetoothProximity('disconnected');
       }
     } catch (error: any) {
       console.error('Bluetooth scan error:', error);
-      alert(error.message || 'Failed to scan for devices');
+      setBluetoothProximity('disconnected');
+      // Don't alert if user cancelled - just log
+      if (error.name !== 'NotFoundError') {
+        alert(error.message || 'Failed to scan for devices');
+      }
     } finally {
       setBluetoothScanning(false);
     }
@@ -443,6 +465,22 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
           <div className="modal-header">
             <h2>Share Your Location</h2>
             <p>Let the driver find you exactly</p>
+          </div>
+
+          {/* GPS Limitation Warning */}
+          <div className="gps-warning-banner" style={{
+            background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+            border: '2px solid #f59e0b',
+            borderRadius: '12px',
+            padding: '12px 16px',
+            margin: '10px 0 15px 0',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '16px', marginBottom: '6px' }}>📡 GPS Technology Limits</div>
+            <div style={{ fontSize: '12px', color: '#92400e', lineHeight: '1.4' }}>
+              <strong>Web browsers use GPS: ±3-10m outdoors, ±10-50m indoors</strong><br/>
+              For centimeter accuracy, use our <strong>mobile app with UWB</strong> on iPhone 11+
+            </div>
           </div>
 
           {locationError && (
@@ -571,6 +609,22 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
           <p>Navigate to the customer's exact location</p>
         </div>
 
+        {/* GPS Limitation Warning */}
+        <div className="gps-warning-banner" style={{
+          background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+          border: '2px solid #f59e0b',
+          borderRadius: '12px',
+          padding: '12px 16px',
+          margin: '10px 0 15px 0',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '16px', marginBottom: '6px' }}>📡 GPS Accuracy: ±3-50 meters</div>
+          <div style={{ fontSize: '12px', color: '#92400e', lineHeight: '1.4' }}>
+            GPS gets you <strong>close</strong>, then look around for the customer.<br/>
+            Use <strong>Bluetooth scan</strong> below when within 10m for proximity confirmation.
+          </div>
+        </div>
+
         {locationError && (
           <div className="error-banner">{locationError}</div>
         )}
@@ -688,6 +742,75 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
                 {trackingData.customerLocation.indoorDetails.floor && (
                   <span>Floor: {trackingData.customerLocation.indoorDetails.floor}</span>
                 )}
+              </div>
+            )}
+
+            {/* AUTO BLUETOOTH PROMPT - Shows when within 15m */}
+            {showBluetoothPrompt && bluetoothSupported && !bluetoothDevice && (
+              <div className="bluetooth-prompt" style={{
+                marginTop: '15px',
+                padding: '15px',
+                background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+                border: '2px solid #3b82f6',
+                borderRadius: '12px',
+                textAlign: 'center',
+                animation: 'pulse 2s infinite'
+              }}>
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>🔵📱</div>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e40af', marginBottom: '8px' }}>
+                  You're Close! Use Bluetooth to Verify
+                </div>
+                <div style={{ fontSize: '11px', color: '#3730a3', marginBottom: '12px' }}>
+                  GPS says ~{trackingData.distance}m away. Bluetooth can confirm if you're within 5-10m of the customer's phone.
+                </div>
+                <button
+                  onClick={scanBluetooth}
+                  disabled={bluetoothScanning}
+                  style={{
+                    padding: '10px 20px',
+                    background: '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    marginRight: '8px'
+                  }}
+                >
+                  {bluetoothScanning ? '🔄 Scanning...' : '🔵 Scan for Customer Device'}
+                </button>
+                <button
+                  onClick={() => setShowBluetoothPrompt(false)}
+                  style={{
+                    padding: '10px 15px',
+                    background: '#e5e7eb',
+                    color: '#374151',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Skip
+                </button>
+              </div>
+            )}
+
+            {/* Bluetooth proximity status indicator */}
+            {bluetoothProximity === 'connected' && (
+              <div style={{
+                marginTop: '10px',
+                padding: '12px',
+                background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
+                border: '2px solid #10b981',
+                borderRadius: '12px',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#065f46' }}>
+                  ✅ BLUETOOTH CONFIRMED: Customer is within 5-10m!
+                </div>
+                <div style={{ fontSize: '12px', color: '#047857', marginTop: '4px' }}>
+                  Look around - you should be able to see them now
+                </div>
               </div>
             )}
 
