@@ -167,13 +167,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   const handleCreateOrder = async () => {
-    // Validation - pickup location must be auto-detected
+    // Validation - location must be auto-detected via GPS
     if (!currentLocation) {
       setOrderError('Waiting for your location. Please allow location access.');
-      return;
-    }
-    if (!orderForm.deliveryAddress.trim()) {
-      setOrderError('Please enter delivery address');
       return;
     }
     if (!orderForm.recipientName.trim()) {
@@ -192,8 +188,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     try {
       console.log('Creating order with:', {
         customerId: user.id,
-        pickupLocation: currentLocation,
-        deliveryAddress: orderForm.deliveryAddress
+        liveLocation: currentLocation
       });
 
       const response = await fetch(`${API_BASE}/delivery/orders`, {
@@ -201,16 +196,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerId: user.id,
-          pickupAddress: currentLocation.address,
-          deliveryAddress: orderForm.deliveryAddress,
+          pickupAddress: 'Driver will pick up package',
+          deliveryAddress: currentLocation.address,
           packageDescription: orderForm.packageDescription || 'Package',
           recipientName: orderForm.recipientName,
           recipientPhone: orderForm.recipientPhone,
-          // Use exact GPS coordinates from customer's location
+          // Delivery goes to customer's LIVE GPS location
           startLat: currentLocation.lat,
           startLng: currentLocation.lng,
-          endLat: -26.1952,
-          endLng: 28.0342
+          endLat: currentLocation.lat,
+          endLng: currentLocation.lng
         })
       });
       
@@ -221,7 +216,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         setOrderSuccess(data.data.orderId);
         // Reset form but keep the auto-detected location
         setOrderForm({
-          pickupAddress: currentLocation.address,
+          pickupAddress: '',
           deliveryAddress: '',
           packageDescription: '',
           recipientName: '',
@@ -339,7 +334,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             <div className="create-section">
               <div className="section-info">
                 <h2>Create New Order</h2>
-                <p>Fill in the details below to request a delivery</p>
+                <p>Driver will deliver to your live GPS location</p>
               </div>
               
               {orderSuccess && (
@@ -358,7 +353,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               <div className="auto-location-section">
                 <div className="location-header">
                   <span className="location-icon">&#128205;</span>
-                  <span>Your Pickup Location</span>
+                  <span>Your Delivery Location (Live GPS)</span>
                 </div>
                 {fetchingLocation && (
                   <div className="location-loading">
@@ -388,17 +383,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               </div>
               
               <form className="order-form" onSubmit={(e) => { e.preventDefault(); handleCreateOrder(); }}>
-                <div className="form-group">
-                  <label>Delivery Address (Where to deliver)</label>
-                  <input
-                    type="text"
-                    placeholder="Enter delivery destination"
-                    value={orderForm.deliveryAddress}
-                    onChange={(e) => setOrderForm({...orderForm, deliveryAddress: e.target.value})}
-                    required
-                  />
-                </div>
-                
                 <div className="form-group">
                   <label>Package Description</label>
                   <textarea

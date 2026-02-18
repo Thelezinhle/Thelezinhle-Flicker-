@@ -17,16 +17,15 @@ import bluetoothRoutes from './routes/bluetooth.routes';
 import uwbRoutes from './routes/uwb.routes';
 import nfcRoutes from './routes/nfc.routes';
 import rangingRoutes from './routes/ranging.routes';
+import deliveryRoutes from './routes/delivery.routes';  // Uses in-memory Maps, no DB needed
 
 // Routes that need database - load conditionally
-let deliveryRoutes: any = null;
 let deliveryRoutesV3: any = null;
 let blockchainRoutes: any = null;
 
 // Only load database-dependent routes if DATABASE_URL or DB_HOST is set
 if (process.env.DATABASE_URL || process.env.DB_HOST) {
   try {
-    deliveryRoutes = require('./routes/delivery.routes').default;
     deliveryRoutesV3 = require('./routes/delivery.routes.v3').default;
     blockchainRoutes = require('./routes/blockchain.routes').default;
     console.log('✅ Database routes loaded');
@@ -109,11 +108,9 @@ app.use('/api/', apiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/proximity', proximityRoutes);
 app.use('/api/devices', deviceRoutes);
+app.use('/api/delivery', deliveryRoutes);  // In-memory delivery routes - always available
 
 // Database-dependent routes (only if loaded)
-if (deliveryRoutes) {
-  app.use('/api/delivery', deliveryRoutes);
-}
 if (deliveryRoutesV3) {
   app.use('/api/delivery', deliveryRoutesV3);
 }
@@ -132,7 +129,7 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'healthy', 
     timestamp: new Date().toISOString(),
     service: 'FlickerSecure Backend API',
-    version: '2.0.0-inmemory',
+    version: '2.1.0-delivery-enabled',
     database: !!(process.env.DATABASE_URL || process.env.DB_HOST) ? 'configured' : 'in-memory'
   });
 });
