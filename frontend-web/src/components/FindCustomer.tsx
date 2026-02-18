@@ -37,6 +37,8 @@ interface TrackingData {
   customerLocation: CustomerLocation;
   message: string;
   eta?: number;
+  accuracy?: number;
+  arrivalThreshold?: number;
 }
 
 const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, onClose }) => {
@@ -60,6 +62,42 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   const socketRef = useRef<Socket | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const updateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // GPS smoothing - store last 5 locations for averaging
+  const locationHistoryRef = useRef<{lat: number, lng: number, timestamp: number}[]>([]);
+  const lastUpdateTimeRef = useRef<number>(0);
+  const UPDATE_THROTTLE_MS = 2000; // Only send updates every 2 seconds
+
+  // Smooth GPS coordinates using moving average
+  const smoothLocation = (lat: number, lng: number): {lat: number, lng: number} => {
+    const now = Date.now();
+    const history = locationHistoryRef.current;
+    
+    // Add new location
+    history.push({ lat, lng, timestamp: now });
+    
+    // Keep only last 5 readings (last 10 seconds max)
+    while (history.length > 5 || (history.length > 1 && now - history[0].timestamp > 10000)) {
+      history.shift();
+    }
+    
+    // Calculate weighted average (newer readings have more weight)
+    let totalWeight = 0;
+    let weightedLat = 0;
+    let weightedLng = 0;
+    
+    history.forEach((loc, index) => {
+      const weight = index + 1; // 1, 2, 3, 4, 5
+      weightedLat += loc.lat * weight;
+      weightedLng += loc.lng * weight;
+      totalWeight += weight;
+    });
+    
+    return {
+      lat: weightedLat / totalWeight,
+      lng: weightedLng / totalWeight
+    };
+  };
 
   // Initialize Socket.IO
   useEffect(() => {
@@ -87,7 +125,9 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
             longitude: data.customerLongitude
           },
           message: `${data.distance}m ${data.direction}`,
-          eta: data.eta
+          eta: data.eta,
+          accuracy: data.accuracy,
+          arrivalThreshold: data.arrivalThreshold
         });
       }
     });
@@ -172,13 +212,23 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   };
 
   const startContinuousLocationUpdates = () => {
-    // Use watchPosition for continuous updates
+    // Use watchPosition for continuous updates with throttling
     watchIdRef.current = navigator.geolocation.watchPosition(
       async (position) => {
         const { latitude, longitude, accuracy, heading } = position.coords;
+        const now = Date.now();
         
-        // Update customer's own location
-        setMyLocation({ lat: latitude, lng: longitude });
+        // Apply GPS smoothing to reduce jitter
+        const smoothed = smoothLocation(latitude, longitude);
+        
+        // Update customer's own location (smoothed)
+        setMyLocation({ lat: smoothed.lat, lng: smoothed.lng });
+
+        // Throttle API calls to every 2 seconds
+        if (now - lastUpdateTimeRef.current < UPDATE_THROTTLE_MS) {
+          return; // Skip this update
+        }
+        lastUpdateTimeRef.current = now;
 
         try {
           await fetch(`${API_BASE}/ranging/beacon/update`, {
@@ -186,8 +236,8 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               orderId,
-              latitude,
-              longitude,
+              latitude: smoothed.lat,
+              longitude: smoothed.lng,
               accuracy,
               heading
             })
@@ -199,7 +249,11 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
       (error) => {
         console.error('Watch position error:', error);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { 
+        enableHighAccuracy: true, 
+        timeout: 10000, 
+        maximumAge: 1000  // Allow 1 second cache to reduce jitter
+      }
     );
   };
 
@@ -505,10 +559,29 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
 
             {/* Status message */}
             <div className={`status-message ${trackingData.status}`}>
-              {trackingData.status === 'arrived' && 'You have arrived!'}
-              {trackingData.status === 'approaching' && 'Getting close!'}
+              {trackingData.status === 'arrived' && '✅ You have arrived! Look around for the customer.'}
+              {trackingData.status === 'approaching' && '🔥 Getting close! Customer is nearby.'}
               {trackingData.status === 'active' && 'Keep walking...'}
             </div>
+
+            {/* GPS accuracy info */}
+            {trackingData.accuracy && (
+              <div className="gps-accuracy" style={{
+                marginTop: '8px',
+                padding: '8px',
+                background: trackingData.accuracy > 15 ? '#fff3cd' : '#d4edda',
+                borderRadius: '6px',
+                fontSize: '11px',
+                color: trackingData.accuracy > 15 ? '#856404' : '#155724',
+                textAlign: 'center'
+              }}>
+                📡 GPS Accuracy: ±{Math.round(trackingData.accuracy)}m
+                {trackingData.accuracy > 15 && ' (Poor signal - try open area)'}
+                {trackingData.arrivalThreshold && trackingData.arrivalThreshold > 1 && (
+                  <span> | Arrival at ~{trackingData.arrivalThreshold.toFixed(0)}m</span>
+                )}
+              </div>
+            )}
 
             {/* Real GPS coordinates display - showing both locations */}
             <div className="gps-coords" style={{

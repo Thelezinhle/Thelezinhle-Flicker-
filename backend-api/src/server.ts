@@ -99,7 +99,7 @@ app.use((req: Request & { io?: Server }, res: Response, next: NextFunction) => {
 // Rate limiting - returns JSON for frontend compatibility
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // Limit each IP to 500 requests per windowMs (increased for testing)
+  max: 3000, // Increased to 3000 for real-time location tracking (200/min)
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {

@@ -12,9 +12,11 @@
     "publish": "eas update --branch main"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~55.0.6",
     "@react-navigation/native": "^7.1.0",
     "@react-navigation/stack": "^7.2.0",
     "expo": "~54.0.33",
+    "expo-dev-client": "^6.0.20",
     "expo-device": "~8.0.10",
     "expo-location": "~19.0.8",
     "expo-status-bar": "~3.0.9",
@@ -26,7 +28,6 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-web": "~0.19.13",
-    "@expo/metro-runtime": "~5.0.10",
     "socket.io-client": "^4.7.0"
   },
   "devDependencies": {

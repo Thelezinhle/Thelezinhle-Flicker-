@@ -416,8 +416,15 @@ router.post('/track/update', [
     session.bearing = bearing;
     session.lastUpdate = new Date();
 
-    // Update status based on distance - use 1 meter for arrived (as requested)
-    if (distance <= 1) {
+    // Calculate combined GPS accuracy (both driver and customer)
+    const combinedAccuracy = (accuracy || 10) + (beacon.accuracy || 10);
+    
+    // Update status based on distance WITH GPS accuracy consideration
+    // If within combined accuracy threshold, consider "arrived"
+    // This accounts for GPS jitter that prevents reaching exactly 0m
+    const arrivalThreshold = Math.max(1, Math.min(combinedAccuracy * 0.5, 5)); // 1-5m based on accuracy
+    
+    if (distance <= arrivalThreshold) {
       session.status = 'arrived';
     } else if (distance <= 10) {
       session.status = 'approaching';  // Within 10 meters = very close
@@ -427,7 +434,7 @@ router.post('/track/update', [
 
     activeRangingSessions.set(sessionId, session);
 
-    // Emit via Socket.IO
+    // Emit via Socket.IO - show decimal for precision when close
     const io = (req as any).io;
     if (io) {
       io.to(`delivery:${session.orderId}`).emit('ranging:updated', {
@@ -436,12 +443,14 @@ router.post('/track/update', [
         driverLongitude: longitude,
         customerLatitude: beacon.latitude,
         customerLongitude: beacon.longitude,
-        distance: Math.round(distance),
+        distance: distance <= 10 ? parseFloat(distance.toFixed(1)) : Math.round(distance),
         bearing: Math.round(bearing),
         direction: getDirectionFromBearing(bearing),
         arrow: getArrowFromBearing(bearing),
         status: session.status,
-        eta: Math.ceil(distance / 1.4) // Seconds at walking speed
+        eta: Math.ceil(distance / 1.4), // Seconds at walking speed
+        accuracy: combinedAccuracy,
+        arrivalThreshold: arrivalThreshold
       });
     }
 

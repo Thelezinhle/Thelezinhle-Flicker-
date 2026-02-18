@@ -3,21 +3,23 @@
  * Ultra-Wideband provides centimeter-accurate distance measurement (0-50m range)
  * 
  * IMPORTANT: Real UWB requires native modules. This service:
- * 1. Checks if UWB is available on the device
- * 2. Falls back to Bluetooth/GPS if UWB is not available
+ * 1. Tries to use native UWB module if installed (NativeUWBBridge)
+ * 2. Falls back to simulation mode if native not available
  * 3. Sends ranging data to the backend when UWB is available
  * 
  * UWB Hardware Support:
  * - iOS: iPhone 11, 12, 13, 14, 15+ (U1/U2 chip)
  * - Android: Pixel 6+, Samsung S21+, S22+, S23+ (Android 12+)
  * 
- * Note: For full UWB support, native modules would need to be added:
- * - iOS: NearbyInteraction framework
- * - Android: android.uwb package
+ * To enable REAL UWB:
+ * 1. npx expo prebuild
+ * 2. Add NearbyInteraction (iOS) or UWB (Android) native modules
+ * 3. Rebuild with: npx expo run:ios or run:android
  */
 
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
+import nativeUWBBridge, { hasNativeUWB, NativeUWBDevice } from './NativeUWBBridge';
 
 // API Configuration
 import { API_BASE } from '../config';
@@ -318,19 +320,61 @@ class UWBService {
 
   /**
    * Start real UWB ranging (requires native module)
-   * This is a placeholder - real implementation needs native code
+   * Tries native bridge first, falls back to simulation if not available
    */
-  private startRealRanging(targetDeviceId: string): void {
+  private async startRealRanging(targetDeviceId: string): Promise<void> {
     console.log('📡 Starting real UWB ranging to:', targetDeviceId);
     
-    // In a real implementation, this would:
-    // 1. Use NearbyInteraction framework on iOS
-    // 2. Use android.uwb package on Android
-    // 3. Establish peer-to-peer connection
-    // 4. Start continuous ranging
+    // Try native UWB bridge first
+    if (hasNativeUWB()) {
+      console.log('📡 Native UWB module detected, starting native session');
+      
+      const sessionId = await nativeUWBBridge.startSession(targetDeviceId, {
+        onDistanceUpdated: async (device: NativeUWBDevice) => {
+          const rangingData: UWBRangingData = {
+            targetDeviceId,
+            sourceDeviceId: this.deviceId,
+            distance: device.distance,
+            azimuth: device.direction,
+            elevation: device.elevation,
+            accuracy: 0.1, // 10cm accuracy for real UWB
+            timestamp: new Date()
+          };
+
+          // Update active session
+          if (this.activeSession) {
+            this.activeSession.lastDistance = rangingData.distance;
+            this.activeSession.lastAzimuth = rangingData.azimuth;
+            this.activeSession.status = 'ranging';
+          }
+
+          // Send to callback
+          if (this.rangingCallback) {
+            this.rangingCallback(rangingData);
+          }
+
+          // Send to backend
+          await this.sendRangingData(rangingData);
+        },
+        onSessionError: (error: string) => {
+          console.error('📡 Native UWB error:', error);
+          // Fall back to simulation on error
+          this.startSimulatedRanging(targetDeviceId);
+        },
+        onSessionEnded: () => {
+          console.log('📡 Native UWB session ended');
+          this.activeSession = null;
+        }
+      });
+
+      if (sessionId) {
+        console.log('📡 Native UWB session started:', sessionId);
+        return;
+      }
+    }
     
-    // For now, fall back to simulation
-    console.warn('📡 Native UWB module not linked, using simulation');
+    // Fall back to simulation if native not available
+    console.warn('📡 Native UWB module not available, using simulation');
     this.startSimulatedRanging(targetDeviceId);
   }
 
@@ -427,6 +471,11 @@ class UWBService {
     if (this.simulationInterval) {
       clearInterval(this.simulationInterval);
       this.simulationInterval = null;
+    }
+
+    // Stop native UWB session if running
+    if (hasNativeUWB()) {
+      await nativeUWBBridge.stopSession();
     }
 
     // Stop backend session

@@ -13,9 +13,20 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.flicker.secure",
+      "entitlements": {
+        "com.apple.developer.proximity-reader.identity.display": true,
+        "com.apple.developer.nearby-interaction": true
+      },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "We need your location to track deliveries and verify handoffs",
-        "NSLocationAlwaysUsageDescription": "We need your location to track deliveries in the background"
+        "NSLocationAlwaysUsageDescription": "We need your location to track deliveries in the background",
+        "NSNearbyInteractionUsageDescription": "We use Ultra-Wideband to precisely locate the customer for delivery handoff",
+        "NSBluetoothAlwaysUsageDescription": "Bluetooth is used to connect with nearby devices for delivery verification",
+        "NSBluetoothPeripheralUsageDescription": "Bluetooth is used to verify you are near the customer",
+        "UIBackgroundModes": [
+          "location",
+          "bluetooth-central"
+        ]
       }
     },
     "android": {
@@ -26,7 +37,8 @@
         "BLUETOOTH",
         "BLUETOOTH_ADMIN",
         "BLUETOOTH_SCAN",
-        "BLUETOOTH_CONNECT"
+        "BLUETOOTH_CONNECT",
+        "UWB_RANGING"
       ]
     },
     "web": {
@@ -34,6 +46,9 @@
       "output": "single",
       "favicon": "./assets/icon.png"
     },
+    "plugins": [
+      "./plugins/withUWB"
+    ],
     "extra": {
       "eas": {
         "projectId": "your-project-id"
