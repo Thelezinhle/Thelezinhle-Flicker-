@@ -6,12 +6,9 @@
 
 import { Router, Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
+import { activeDeliveries, locationHistory } from '../data/store';
 
 const router = Router();
-
-// In-memory storage for active deliveries (replace with database in production)
-const activeDeliveries = new Map<string, any>();
-const locationHistory = new Map<string, any[]>();
 
 /**
  * Get all deliveries (for driver portal)

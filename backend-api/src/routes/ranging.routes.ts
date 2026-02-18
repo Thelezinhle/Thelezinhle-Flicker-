@@ -6,13 +6,11 @@
 
 import { Router, Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
+import { activeDeliveries, customerBeacons, activeRangingSessions } from '../data/store';
 
 const router = Router();
 
-// In-memory storage for active ranging sessions
-const activeRangingSessions = new Map<string, RangingSession>();
-const customerBeacons = new Map<string, CustomerBeacon>();
-
+// CustomerBeacon and RangingSession interfaces (data stored in shared store)
 interface CustomerBeacon {
   customerId: string;
   orderId: string;
@@ -295,17 +293,38 @@ router.post('/track/start', [
 
     const { driverId, orderId, latitude, longitude, heading, speed, accuracy } = req.body;
 
-    // Check if customer beacon exists
-    const beacon = customerBeacons.get(orderId);
+    // Check if customer beacon exists, otherwise try delivery location as fallback
+    let beacon = customerBeacons.get(orderId);
+    let usingDeliveryFallback = false;
+    
     if (!beacon) {
-      return res.status(404).json({
-        success: false,
-        message: 'Customer is not currently sharing location. Ask the customer to tap "Share My Location" in their app first.',
-        hint: 'The customer must start sharing their location before you can track them.',
-        orderId,
-        activeBeacons: customerBeacons.size,
-        debugUrl: '/api/ranging/debug/beacons'
-      });
+      // Try to get customer location from the delivery order (fallback for network issues)
+      const delivery = activeDeliveries.get(orderId);
+      if (delivery && delivery.deliveryLocation) {
+        // Create a temporary beacon from delivery location
+        beacon = {
+          customerId: delivery.customerId || 'unknown',
+          orderId,
+          latitude: delivery.deliveryLocation.latitude,
+          longitude: delivery.deliveryLocation.longitude,
+          accuracy: 50, // Lower accuracy since it's from order address
+          locationType: 'fixed' as const,
+          status: 'waiting' as const,
+          lastUpdate: new Date(),
+          createdAt: new Date()
+        };
+        usingDeliveryFallback = true;
+        console.log(`Using delivery address as fallback for order ${orderId}`);
+      } else {
+        return res.status(404).json({
+          success: false,
+          message: 'No location available. Customer hasn\'t shared location and no delivery address found.',
+          hint: 'Ask the customer to tap "Share My Location" or ensure the order has a delivery address.',
+          orderId,
+          activeBeacons: customerBeacons.size,
+          debugUrl: '/api/ranging/debug/beacons'
+        });
+      }
     }
 
     // Calculate distance and bearing
@@ -354,7 +373,7 @@ router.post('/track/start', [
       });
     }
 
-    console.log(`Driver tracking started for order ${orderId}, distance: ${distance.toFixed(1)}m`);
+    console.log(`Driver tracking started for order ${orderId}, distance: ${distance.toFixed(1)}m${usingDeliveryFallback ? ' (using delivery address)' : ''}`);
 
     return res.status(201).json({
       success: true,
@@ -365,13 +384,15 @@ router.post('/track/start', [
           latitude: beacon.latitude,
           longitude: beacon.longitude,
           indoorDetails: beacon.indoorDetails,
-          locationType: beacon.locationType // Tell driver if customer uses live or fixed
+          locationType: beacon.locationType, // Tell driver if customer uses live or fixed
+          isDeliveryFallback: usingDeliveryFallback // True if using order address instead of live sharing
         },
         distance: Math.round(distance),
         bearing: Math.round(bearing),
         direction: getDirectionFromBearing(bearing),
         arrow: getArrowFromBearing(bearing),
-        status: session.status
+        status: session.status,
+        note: usingDeliveryFallback ? 'Using delivery address (customer not sharing live location)' : undefined
       }
     });
   } catch (error) {
@@ -403,13 +424,32 @@ router.post('/track/update', [
       });
     }
 
-    // Get latest customer location
-    const beacon = customerBeacons.get(session.orderId);
+    // Get latest customer location - try beacon first, then delivery fallback
+    let beacon = customerBeacons.get(session.orderId);
+    let usingDeliveryFallback = false;
+    
     if (!beacon) {
-      return res.status(404).json({
-        success: false,
-        message: 'Customer stopped sharing location'
-      });
+      // Try to use delivery location as fallback
+      const delivery = activeDeliveries.get(session.orderId);
+      if (delivery && delivery.deliveryLocation) {
+        beacon = {
+          customerId: delivery.customerId || session.customerId,
+          orderId: session.orderId,
+          latitude: delivery.deliveryLocation.latitude,
+          longitude: delivery.deliveryLocation.longitude,
+          accuracy: 50,
+          locationType: 'fixed' as const,
+          status: 'waiting' as const,
+          lastUpdate: new Date(),
+          createdAt: new Date()
+        };
+        usingDeliveryFallback = true;
+      } else {
+        return res.status(404).json({
+          success: false,
+          message: 'Customer stopped sharing and no delivery address available'
+        });
+      }
     }
 
     // Update customer location in session

@@ -21,6 +21,7 @@ interface CustomerLocation {
   latitude: number;
   longitude: number;
   locationType?: 'live' | 'fixed';
+  isDeliveryFallback?: boolean; // True if using order address instead of live sharing
   indoorDetails?: {
     building?: string;
     floor?: string;
@@ -224,11 +225,8 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
         const { latitude, longitude, accuracy, heading } = position.coords;
         const now = Date.now();
         
-        // Apply GPS smoothing to reduce jitter
-        const smoothed = smoothLocation(latitude, longitude);
-        
-        // Update customer's own location (smoothed)
-        setMyLocation({ lat: smoothed.lat, lng: smoothed.lng });
+        // Use RAW GPS coordinates for accuracy (no smoothing - caused 30m drift)
+        setMyLocation({ lat: latitude, lng: longitude });
 
         // Throttle API calls to every 2 seconds
         if (now - lastUpdateTimeRef.current < UPDATE_THROTTLE_MS) {
@@ -242,8 +240,8 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               orderId,
-              latitude: smoothed.lat,
-              longitude: smoothed.lng,
+              latitude, // Send RAW GPS, not smoothed
+              longitude,
               accuracy,
               heading
             })
@@ -639,20 +637,26 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
             </div>
 
             {/* Customer location type badge */}
-            {trackingData.customerLocation?.locationType && (
+            {trackingData.customerLocation && (
               <div style={{
                 display: 'inline-block',
                 padding: '6px 12px',
                 borderRadius: '20px',
                 marginTop: '10px',
-                background: trackingData.customerLocation.locationType === 'fixed' ? '#d1fae5' : '#dbeafe',
-                color: trackingData.customerLocation.locationType === 'fixed' ? '#065f46' : '#1e40af',
+                background: trackingData.customerLocation.isDeliveryFallback 
+                  ? '#fef3c7' 
+                  : (trackingData.customerLocation.locationType === 'fixed' ? '#d1fae5' : '#dbeafe'),
+                color: trackingData.customerLocation.isDeliveryFallback 
+                  ? '#92400e' 
+                  : (trackingData.customerLocation.locationType === 'fixed' ? '#065f46' : '#1e40af'),
                 fontWeight: 'bold',
                 fontSize: '11px'
               }}>
-                {trackingData.customerLocation.locationType === 'fixed' 
-                  ? '📍 Customer: Fixed Location (stable)' 
-                  : '🔴 Customer: Live Location (updates)'}
+                {trackingData.customerLocation.isDeliveryFallback 
+                  ? '📦 Using Delivery Address (customer offline)'
+                  : (trackingData.customerLocation.locationType === 'fixed' 
+                    ? '📍 Customer: Fixed Location (stable)' 
+                    : '🔴 Customer: Live Location (updates)')}
               </div>
             )}
 
