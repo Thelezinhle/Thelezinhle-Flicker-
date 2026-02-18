@@ -66,41 +66,9 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   const watchIdRef = useRef<number | null>(null);
   const updateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
-  // GPS smoothing - store last 5 locations for averaging
-  const locationHistoryRef = useRef<{lat: number, lng: number, timestamp: number}[]>([]);
+  // Throttle for API calls
   const lastUpdateTimeRef = useRef<number>(0);
   const UPDATE_THROTTLE_MS = 2000; // Only send updates every 2 seconds
-
-  // Smooth GPS coordinates using moving average
-  const smoothLocation = (lat: number, lng: number): {lat: number, lng: number} => {
-    const now = Date.now();
-    const history = locationHistoryRef.current;
-    
-    // Add new location
-    history.push({ lat, lng, timestamp: now });
-    
-    // Keep only last 5 readings (last 10 seconds max)
-    while (history.length > 5 || (history.length > 1 && now - history[0].timestamp > 10000)) {
-      history.shift();
-    }
-    
-    // Calculate weighted average (newer readings have more weight)
-    let totalWeight = 0;
-    let weightedLat = 0;
-    let weightedLng = 0;
-    
-    history.forEach((loc, index) => {
-      const weight = index + 1; // 1, 2, 3, 4, 5
-      weightedLat += loc.lat * weight;
-      weightedLng += loc.lng * weight;
-      totalWeight += weight;
-    });
-    
-    return {
-      lat: weightedLat / totalWeight,
-      lng: weightedLng / totalWeight
-    };
-  };
 
   // Initialize Socket.IO
   useEffect(() => {
