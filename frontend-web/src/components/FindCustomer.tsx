@@ -325,7 +325,11 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
             });
             startContinuousTracking(data.data.sessionId);
           } else {
-            setLocationError(data.message || 'Customer is not sharing location');
+            // Show detailed error with hint if available
+            const errorMsg = data.hint 
+              ? `${data.message}\n\n${data.hint}` 
+              : (data.message || 'Customer is not sharing location');
+            setLocationError(errorMsg);
             setTracking(false);
           }
         } catch (error) {

@@ -130,6 +130,31 @@ function applyDeadReckoning(
 }
 
 /**
+ * Debug endpoint - check active beacons
+ * GET /api/ranging/debug/beacons
+ */
+router.get('/debug/beacons', (_req: Request, res: Response): void => {
+  const beacons: any[] = [];
+  customerBeacons.forEach((beacon, orderId) => {
+    beacons.push({
+      orderId,
+      customerId: beacon.customerId,
+      status: beacon.status,
+      lastUpdate: beacon.lastUpdate,
+      location: { lat: beacon.latitude, lng: beacon.longitude }
+    });
+  });
+  
+  res.json({
+    success: true,
+    activeBeacons: beacons.length,
+    beacons,
+    activeSessions: activeRangingSessions.size,
+    serverStartedAt: new Date(Date.now() - process.uptime() * 1000).toISOString()
+  });
+});
+
+/**
  * Customer starts "I'm waiting" beacon
  * POST /api/ranging/beacon/start
  */
@@ -273,7 +298,11 @@ router.post('/track/start', [
     if (!beacon) {
       return res.status(404).json({
         success: false,
-        message: 'Customer is not currently sharing location'
+        message: 'Customer is not currently sharing location. Ask the customer to tap "Share My Location" in their app first.',
+        hint: 'The customer must start sharing their location before you can track them.',
+        orderId,
+        activeBeacons: customerBeacons.size,
+        debugUrl: '/api/ranging/debug/beacons'
       });
     }
 
