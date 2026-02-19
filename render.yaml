@@ -40,7 +40,6 @@ services:
   - type: web
     name: flicker-secure-web
     runtime: static
-    plan: free
     buildCommand: cd frontend-web && npm install && npm run build
     staticPublishPath: frontend-web/dist
     headers:
