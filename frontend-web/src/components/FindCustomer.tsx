@@ -50,11 +50,15 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   const [locationError, setLocationError] = useState<string | null>(null);
   const [myLocation, setMyLocation] = useState<{lat: number, lng: number} | null>(null);
   const [locationType, setLocationType] = useState<'live' | 'fixed'>('fixed'); // Default to stable fixed location
+  const [verificationCode, setVerificationCode] = useState<string | null>(null); // 4-digit code for driver verification
   
   // Driver state
   const [tracking, setTracking] = useState(false);
   const [trackingData, setTrackingData] = useState<TrackingData | null>(null);
   const [_sessionId, setSessionId] = useState<string | null>(null);
+  const [codeInput, setCodeInput] = useState(''); // Driver enters customer's 4-digit code
+  const [codeVerified, setCodeVerified] = useState(false); // Whether code was verified
+  const [verifyingCode, setVerifyingCode] = useState(false); // Loading state
   
   // Bluetooth state
   const [bluetoothDevice, setBluetoothDevice] = useState<BluetoothDeviceInfo | null>(null);
@@ -165,6 +169,10 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
           
           if (data.success) {
             setBeaconActive(true);
+            // Store verification code to show to customer
+            if (data.data.verificationCode) {
+              setVerificationCode(data.data.verificationCode);
+            }
             // Only start continuous updates for live mode
             if (locationType === 'live') {
               startContinuousLocationUpdates();
@@ -454,6 +462,44 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
     }
   };
 
+  // Verify customer's 4-digit code
+  const verifyCode = async () => {
+    if (codeInput.length !== 4) {
+      alert('Please enter the 4-digit code from the customer');
+      return;
+    }
+
+    setVerifyingCode(true);
+    try {
+      const response = await fetch(`${API_BASE}/ranging/verify-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          driverId: userId,
+          code: codeInput
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.verified) {
+        setCodeVerified(true);
+        stopTracking();
+        alert('✅ Code verified! Customer confirmed. Delivery complete!');
+        onClose();
+      } else {
+        alert(data.message || 'Incorrect code. Please try again.');
+        setCodeInput('');
+      }
+    } catch (error) {
+      console.error('Error verifying code:', error);
+      alert('Failed to verify code. Please try again.');
+    } finally {
+      setVerifyingCode(false);
+    }
+  };
+
   // Render different views for customer and driver
   if (userRole === 'client') {
     return (
@@ -553,6 +599,35 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               <div className="beacon-icon active-pulse">&#128205;</div>
               <h3>Location Sharing Active</h3>
               <p>The driver can now see your exact location and navigate to you</p>
+              
+              {/* VERIFICATION CODE - Show prominently */}
+              {verificationCode && (
+                <div style={{
+                  margin: '15px 0',
+                  padding: '20px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  borderRadius: '16px',
+                  textAlign: 'center',
+                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
+                }}>
+                  <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: '12px', marginBottom: '8px' }}>
+                    Tell the driver your code:
+                  </div>
+                  <div style={{
+                    fontSize: '48px',
+                    fontWeight: 'bold',
+                    color: 'white',
+                    letterSpacing: '12px',
+                    fontFamily: 'monospace',
+                    textShadow: '2px 2px 4px rgba(0,0,0,0.2)'
+                  }}>
+                    {verificationCode}
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '11px', marginTop: '8px' }}>
+                    Driver will ask for this code to confirm they found you
+                  </div>
+                </div>
+              )}
               
               {/* Show location type badge */}
               <div style={{
@@ -674,26 +749,79 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               {trackingData.status === 'active' && 'Keep walking in the direction shown...'}
             </div>
 
-            {/* PROMINENT "I Found Customer" Button when close */}
-            {trackingData.distance <= 50 && (
-              <button
-                onClick={markArrived}
-                style={{
-                  marginTop: '15px',
-                  padding: '15px 30px',
-                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '12px',
-                  fontSize: '18px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  width: '100%',
-                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
-                }}
-              >
-                👋 I Found The Customer!
-              </button>
+            {/* CODE VERIFICATION - Ask customer for 4-digit code */}
+            {trackingData.distance <= 50 && !codeVerified && (
+              <div style={{
+                marginTop: '15px',
+                padding: '20px',
+                background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+                border: '2px solid #3b82f6',
+                borderRadius: '16px',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e40af', marginBottom: '12px' }}>
+                  🔐 Ask Customer for Their Code
+                </div>
+                <div style={{ fontSize: '12px', color: '#3730a3', marginBottom: '15px' }}>
+                  The customer has a 4-digit code on their screen. Enter it to verify you found the right person.
+                </div>
+                
+                {/* 4-digit code input */}
+                <input
+                  type="text"
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="0000"
+                  maxLength={4}
+                  style={{
+                    fontSize: '32px',
+                    fontWeight: 'bold',
+                    fontFamily: 'monospace',
+                    letterSpacing: '10px',
+                    textAlign: 'center',
+                    width: '150px',
+                    padding: '10px',
+                    border: '3px solid #3b82f6',
+                    borderRadius: '12px',
+                    marginBottom: '15px'
+                  }}
+                />
+                
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                  <button
+                    onClick={verifyCode}
+                    disabled={codeInput.length !== 4 || verifyingCode}
+                    style={{
+                      padding: '12px 24px',
+                      background: codeInput.length === 4 ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#9ca3af',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                      cursor: codeInput.length === 4 ? 'pointer' : 'not-allowed',
+                      boxShadow: codeInput.length === 4 ? '0 4px 14px rgba(16, 185, 129, 0.4)' : 'none'
+                    }}
+                  >
+                    {verifyingCode ? '⏳ Verifying...' : '✅ Verify Code'}
+                  </button>
+                  
+                  <button
+                    onClick={markArrived}
+                    style={{
+                      padding: '12px 24px',
+                      background: '#6b7280',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      fontSize: '14px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Skip (Found Anyway)
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* Customer location type badge */}

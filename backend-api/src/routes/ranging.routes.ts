@@ -20,6 +20,7 @@ interface CustomerBeacon {
   accuracy: number;
   heading?: number;
   locationType: 'live' | 'fixed'; // Customer location sharing mode
+  verificationCode: string; // 4-digit code for driver to verify they found the right customer
   indoorDetails?: {
     building?: string;
     floor?: string;
@@ -29,6 +30,11 @@ interface CustomerBeacon {
   status: 'waiting' | 'found' | 'completed';
   lastUpdate: Date;
   createdAt: Date;
+}
+
+// Generate random 4-digit verification code
+function generateVerificationCode(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
 interface RangingSession {
@@ -171,6 +177,9 @@ router.post('/beacon/start', [
 
     const { customerId, orderId, latitude, longitude, altitude, accuracy, indoorDetails, locationType } = req.body;
 
+    // Generate 4-digit verification code
+    const verificationCode = generateVerificationCode();
+
     const beacon: CustomerBeacon = {
       customerId,
       orderId,
@@ -179,6 +188,7 @@ router.post('/beacon/start', [
       altitude,
       accuracy: accuracy || 10,
       locationType: locationType || 'fixed', // Default to fixed for stability
+      verificationCode,
       indoorDetails,
       status: 'waiting',
       lastUpdate: new Date(),
@@ -199,13 +209,14 @@ router.post('/beacon/start', [
       });
     }
 
-    console.log(`Customer beacon started for order ${orderId}`);
+    console.log(`Customer beacon started for order ${orderId} with code ${verificationCode}`);
 
     return res.status(201).json({
       success: true,
       data: {
         orderId,
         status: 'waiting',
+        verificationCode, // Send code to customer to show driver
         message: 'Your location is now visible to the driver'
       }
     });
@@ -721,6 +732,81 @@ router.post('/arrived', [
     return res.status(500).json({
       success: false,
       message: 'Failed to mark as arrived'
+    });
+  }
+});
+
+/**
+ * Verify customer code - Driver enters code to confirm they found the right customer
+ * POST /api/ranging/verify-code
+ */
+router.post('/verify-code', [
+  body('orderId').notEmpty(),
+  body('driverId').notEmpty(),
+  body('code').notEmpty().isLength({ min: 4, max: 4 })
+], async (req: Request, res: Response): Promise<any> => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const { orderId, driverId, code } = req.body;
+
+    // Get the beacon
+    const beacon = customerBeacons.get(orderId);
+    if (!beacon) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer beacon not found. They may have stopped sharing.'
+      });
+    }
+
+    // Verify the code
+    if (beacon.verificationCode !== code) {
+      return res.json({
+        success: false,
+        verified: false,
+        message: 'Incorrect code. Ask the customer for their 4-digit Flicker code.'
+      });
+    }
+
+    // Code matches! Mark as found
+    beacon.status = 'found';
+    customerBeacons.set(orderId, beacon);
+
+    // Complete any active session
+    for (const [sessionId, session] of activeRangingSessions) {
+      if (session.orderId === orderId) {
+        session.status = 'completed';
+        activeRangingSessions.set(sessionId, session);
+        break;
+      }
+    }
+
+    // Emit via Socket.IO
+    const io = (req as any).io;
+    if (io) {
+      io.to(`delivery:${orderId}`).emit('driver:arrived', {
+        orderId,
+        driverId,
+        verified: true,
+        message: 'Driver has verified and found you!'
+      });
+    }
+
+    console.log(`Driver verified customer with code for order ${orderId}`);
+
+    return res.json({
+      success: true,
+      verified: true,
+      message: 'Code verified! Customer confirmed.'
+    });
+  } catch (error) {
+    console.error('Error verifying code:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to verify code'
     });
   }
 });
