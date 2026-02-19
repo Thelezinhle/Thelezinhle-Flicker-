@@ -67,6 +67,10 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   const [bluetoothProximity, setBluetoothProximity] = useState<'connected' | 'disconnected' | 'scanning' | null>(null);
   const [showBluetoothPrompt, setShowBluetoothPrompt] = useState(false);
   
+  // iOS detection - important for feature support
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  
   // Socket reference
   const socketRef = useRef<Socket | null>(null);
   const watchIdRef = useRef<number | null>(null);
@@ -183,13 +187,32 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
           }
         } catch (error) {
           console.error('Error starting beacon:', error);
-          setLocationError('Network error');
+          setLocationError('Network error - check your internet connection');
           setSharingLocation(false);
         }
       },
       (error) => {
         console.error('Location error:', error);
-        setLocationError('Could not get location. Please enable location access.');
+        // Provide specific error messages for common issues
+        let errorMsg = 'Could not get location.';
+        const isiOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMsg = isiOSDevice 
+              ? 'Location denied. Go to Settings > Safari > Location > Allow'
+              : 'Location access denied. Please allow location in browser settings.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMsg = isiOSDevice
+              ? 'Location unavailable. Make sure Location Services is ON in Settings > Privacy > Location Services'
+              : 'Location unavailable. Try moving to an open area.';
+            break;
+          case error.TIMEOUT:
+            errorMsg = 'Location request timed out. Please try again.';
+            break;
+        }
+        setLocationError(errorMsg);
         setSharingLocation(false);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
@@ -316,13 +339,32 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
           }
         } catch (error) {
           console.error('Error starting tracking:', error);
-          setLocationError('Network error');
+          setLocationError('Network error - check your internet connection');
           setTracking(false);
         }
       },
       (error) => {
         console.error('Location error:', error);
-        setLocationError('Could not get location');
+        // Provide specific error messages for common issues
+        let errorMsg = 'Could not get location.';
+        const isiOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMsg = isiOSDevice 
+              ? 'Location denied. Go to Settings > Safari > Location > Allow'
+              : 'Location access denied. Please allow location in browser settings.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMsg = isiOSDevice
+              ? 'Location unavailable. Make sure Location Services is ON in Settings > Privacy > Location Services'
+              : 'Location unavailable. Try moving to an open area.';
+            break;
+          case error.TIMEOUT:
+            errorMsg = 'Location request timed out. Please try again.';
+            break;
+        }
+        setLocationError(errorMsg);
         setTracking(false);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
@@ -404,10 +446,13 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
     setSessionId(null);
   };
 
-  // Check Bluetooth support on mount
+  // Check Bluetooth support on mount (NOT supported on iOS!)
   useEffect(() => {
     const support = webBluetoothService.checkSupport();
-    setBluetoothSupported(support.supported);
+    // Web Bluetooth doesn't work on iOS even in Chrome (uses WebKit underneath)
+    const isiOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    setBluetoothSupported(support.supported && !isiOSDevice);
   }, []);
 
   // Scan for customer's device via Bluetooth
@@ -527,6 +572,26 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               For centimeter accuracy, use our <strong>mobile app with UWB</strong> on iPhone 11+
             </div>
           </div>
+
+          {/* iOS-specific warning */}
+          {isIOS && (
+            <div style={{
+              background: 'linear-gradient(135deg, #fecaca 0%, #fca5a5 100%)',
+              border: '2px solid #ef4444',
+              borderRadius: '12px',
+              padding: '12px 16px',
+              margin: '0 0 15px 0',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#991b1b', marginBottom: '6px' }}>
+                📱 iPhone Detected
+              </div>
+              <div style={{ fontSize: '11px', color: '#7f1d1d', lineHeight: '1.4' }}>
+                <strong>GPS works but Bluetooth does NOT work on iPhone browsers.</strong><br/>
+                For full features including UWB, download our <strong>native iOS app</strong>.
+              </div>
+            </div>
+          )}
 
           {locationError && (
             <div className="error-banner">{locationError}</div>
@@ -695,9 +760,33 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
           <div style={{ fontSize: '16px', marginBottom: '6px' }}>📡 GPS Accuracy: ±3-50 meters</div>
           <div style={{ fontSize: '12px', color: '#92400e', lineHeight: '1.4' }}>
             GPS gets you <strong>close</strong>, then look around for the customer.<br/>
-            Use <strong>Bluetooth scan</strong> below when within 10m for proximity confirmation.
+            {isIOS ? (
+              <span>Use the <strong>4-digit code</strong> to verify you found the right person.</span>
+            ) : (
+              <span>Use <strong>Bluetooth scan</strong> below when within 10m for proximity confirmation.</span>
+            )}
           </div>
         </div>
+
+        {/* iOS-specific warning */}
+        {isIOS && (
+          <div style={{
+            background: 'linear-gradient(135deg, #fecaca 0%, #fca5a5 100%)',
+            border: '2px solid #ef4444',
+            borderRadius: '12px',
+            padding: '12px 16px',
+            margin: '0 0 15px 0',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#991b1b', marginBottom: '6px' }}>
+              📱 iPhone Detected
+            </div>
+            <div style={{ fontSize: '11px', color: '#7f1d1d', lineHeight: '1.4' }}>
+              <strong>Bluetooth does NOT work on iPhone browsers.</strong><br/>
+              GPS tracking works! Ask customer for their <strong>4-digit code</strong> to verify.
+            </div>
+          </div>
+        )}
 
         {locationError && (
           <div className="error-banner">{locationError}</div>
@@ -713,40 +802,121 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
           </div>
         ) : trackingData ? (
           <div className="tracking-active">
+            
+            {/* 🚨 PROMINENT "FOUND CUSTOMER" BUTTON - Show at TOP when within 30m */}
+            {trackingData.distance <= 30 && !codeVerified && (
+              <div style={{
+                marginBottom: '15px',
+                padding: '20px',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                borderRadius: '16px',
+                textAlign: 'center',
+                boxShadow: '0 6px 20px rgba(16, 185, 129, 0.5)',
+                animation: 'pulse 1.5s infinite'
+              }}>
+                <div style={{ fontSize: '28px', marginBottom: '8px' }}>👀🔍</div>
+                <div style={{ color: 'white', fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>
+                  YOU'RE CLOSE! LOOK AROUND!
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: '12px', marginBottom: '12px' }}>
+                  GPS says ~{trackingData.distance}m but you might be closer!<br/>
+                  <strong>GPS accuracy is ±5-20m</strong> - look for the customer visually
+                </div>
+                <button
+                  onClick={markArrived}
+                  style={{
+                    padding: '15px 30px',
+                    background: 'white',
+                    color: '#059669',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontSize: '18px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.2)'
+                  }}
+                >
+                  ✅ I SEE THE CUSTOMER!
+                </button>
+              </div>
+            )}
+
             {/* Big direction arrow */}
             <div className={`direction-arrow ${trackingData.status}`}>
               <span className="arrow">{trackingData.arrow}</span>
             </div>
 
-            {/* Distance display */}
+            {/* Distance display with GPS INACCURACY indicator */}
             <div className="distance-display">
               <span className="distance">{trackingData.distance}</span>
               <span className="unit">meters</span>
               <span className="direction-text">{trackingData.direction}</span>
+              {trackingData.distance <= 30 && (
+                <span style={{
+                  display: 'block',
+                  fontSize: '11px',
+                  color: '#f59e0b',
+                  marginTop: '4px'
+                }}>
+                  ⚠️ GPS accuracy: ±{trackingData.accuracy || 10}m
+                </span>
+              )}
             </div>
 
-            {/* GPS Reality Warning - shows when distance seems stuck */}
+            {/* GPS Reality Warning - ENHANCED for when distance seems stuck */}
             {trackingData.distance > 0 && trackingData.distance <= 50 && (
               <div style={{
                 marginTop: '10px',
-                padding: '10px',
-                background: '#fef3c7',
-                border: '1px solid #f59e0b',
-                borderRadius: '8px',
-                fontSize: '11px',
+                padding: '12px',
+                background: trackingData.distance <= 20 
+                  ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' 
+                  : '#fef3c7',
+                border: trackingData.distance <= 20 ? '2px solid #f59e0b' : '1px solid #f59e0b',
+                borderRadius: '10px',
+                fontSize: '12px',
                 color: '#92400e',
                 textAlign: 'center'
               }}>
-                <strong>GPS shows {trackingData.distance}m</strong> but this may be inaccurate.<br/>
-                If you can <strong>see the customer</strong>, tap "I Found Customer" below!
+                {trackingData.distance <= 20 ? (
+                  <>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '6px' }}>
+                      🎯 GPS shows {trackingData.distance}m - YOU'RE VERY CLOSE!
+                    </div>
+                    <div style={{ fontSize: '11px' }}>
+                      GPS can't be more accurate in browsers.<br/>
+                      <strong>Stand up, look around in all directions!</strong><br/>
+                      The customer should be within sight.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <strong>GPS shows {trackingData.distance}m</strong> - keep walking {trackingData.direction}.<br/>
+                    When close, look around visually for the customer.
+                  </>
+                )}
               </div>
             )}
 
-            {/* Status message */}
-            <div className={`status-message ${trackingData.status}`}>
-              {trackingData.status === 'arrived' && '✅ You have arrived! Look around for the customer.'}
-              {trackingData.status === 'approaching' && '🔥 Getting close! Look around for the customer.'}
-              {trackingData.status === 'active' && 'Keep walking in the direction shown...'}
+            {/* Status message - ENHANCED for GPS inaccuracy */}
+            <div className={`status-message ${trackingData.status}`} style={{
+              padding: '10px 15px',
+              borderRadius: '8px',
+              marginTop: '8px',
+              background: trackingData.status === 'arrived' ? '#d1fae5' : 
+                          trackingData.status === 'approaching' ? '#fef3c7' : '#f3f4f6'
+            }}>
+              {trackingData.status === 'arrived' && (
+                <>✅ GPS: ARRIVED ZONE! Look around in all directions!</>
+              )}
+              {trackingData.status === 'approaching' && (
+                <>🔥 Getting close ({trackingData.distance}m)! Start looking around!</>
+              )}
+              {trackingData.status === 'active' && trackingData.distance <= 50 && (
+                <>📍 ~{trackingData.distance}m away - keep walking {trackingData.direction}</> 
+              )}
+              {trackingData.status === 'active' && trackingData.distance > 50 && (
+                <>🚶 {trackingData.distance}m to customer - walk {trackingData.direction}</>
+              )}
             </div>
 
             {/* CODE VERIFICATION - Ask customer for 4-digit code */}
@@ -1015,14 +1185,65 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               </div>
             )}
 
-            {/* Action buttons */}
-            <div className="tracking-actions">
-              <button className="arrived-btn" onClick={markArrived}>
-                I Found Customer
+            {/* Action buttons - ENHANCED with prominent "Found" button */}
+            <div className="tracking-actions" style={{
+              marginTop: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              {/* Primary action - HUGE green button */}
+              <button 
+                className="arrived-btn" 
+                onClick={markArrived}
+                style={{
+                  padding: '18px 30px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '14px',
+                  fontSize: '20px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  boxShadow: '0 6px 20px rgba(16, 185, 129, 0.4)',
+                  transition: 'transform 0.2s'
+                }}
+              >
+                ✅ I FOUND THE CUSTOMER!
               </button>
-              <button className="stop-tracking-btn" onClick={stopTracking}>
-                Stop Tracking
+              
+              {/* Secondary action */}
+              <button 
+                className="stop-tracking-btn" 
+                onClick={stopTracking}
+                style={{
+                  padding: '12px 24px',
+                  background: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '10px',
+                  fontSize: '14px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel Search
               </button>
+            </div>
+            
+            {/* GPS Limitation Footer */}
+            <div style={{
+              marginTop: '15px',
+              padding: '12px',
+              background: '#f0f4ff',
+              borderRadius: '10px',
+              fontSize: '10px',
+              color: '#6b7280',
+              textAlign: 'center',
+              lineHeight: '1.5'
+            }}>
+              📡 <strong>Web GPS Accuracy: ±5-50 meters</strong><br/>
+              GPS in browsers can't pinpoint exact location like native apps.<br/>
+              When within 30m, use visual search + 4-digit code verification.
             </div>
           </div>
         ) : (

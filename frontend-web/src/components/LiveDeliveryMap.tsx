@@ -44,13 +44,16 @@ interface Props {
 }
 
 const LiveDeliveryMap: React.FC<Props> = ({ 
-  orderId = 'sample-order-123',
+  orderId: propOrderId,
   onDeliveryComplete 
 }) => {
+  const [orderId, setOrderId] = useState<string | null>(propOrderId || null);
   const [delivery, setDelivery] = useState<DeliveryTracking | null>(null);
   const [_locationHistory, setLocationHistory] = useState<DeliveryLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [noActiveDeliveries, setNoActiveDeliveries] = useState(false);
+  const [creatingDemo, setCreatingDemo] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -127,8 +130,12 @@ const LiveDeliveryMap: React.FC<Props> = ({
   }, [orderId, onDeliveryComplete]);
 
   useEffect(() => {
-    loadDeliveryTracking();
-    const interval = setInterval(() => loadDeliveryTracking(), 5000); // Update every 5 seconds
+    checkAndLoadDelivery();
+    const interval = setInterval(() => {
+      if (orderId) {
+        loadDeliveryTracking();
+      }
+    }, 5000);
     return () => clearInterval(interval);
   }, [orderId]);
 
@@ -139,7 +146,72 @@ const LiveDeliveryMap: React.FC<Props> = ({
     }
   }, [delivery]);
 
+  // Check for active deliveries or use provided orderId
+  const checkAndLoadDelivery = async () => {
+    setLoading(true);
+    try {
+      // If orderId was provided, use it directly
+      if (orderId) {
+        await loadDeliveryTracking();
+        return;
+      }
+
+      // Otherwise, check for active deliveries
+      const response = await axios.get(`${API_BASE}/delivery/active`);
+      
+      if (response.data.success && response.data.data.length > 0) {
+        // Use the first active delivery
+        const firstDelivery = response.data.data[0];
+        setOrderId(firstDelivery.orderId);
+        setNoActiveDeliveries(false);
+      } else {
+        // No active deliveries
+        setNoActiveDeliveries(true);
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error('Error checking active deliveries:', err);
+      setNoActiveDeliveries(true);
+      setLoading(false);
+    }
+  };
+
+  // Create a demo delivery for testing
+  const createDemoDelivery = async () => {
+    setCreatingDemo(true);
+    try {
+      const demoData = {
+        orderId: `demo-${Date.now()}`,
+        driverId: 'demo-driver-001',
+        customerId: 'demo-customer-001',
+        customerLocation: {
+          latitude: -26.2041,
+          longitude: 28.0473
+        },
+        restaurantLocation: {
+          latitude: -26.2100,
+          longitude: 28.0500
+        }
+      };
+
+      const response = await axios.post(`${API_BASE}/delivery/start`, demoData);
+      
+      if (response.data.success) {
+        setOrderId(response.data.data.orderId);
+        setNoActiveDeliveries(false);
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Error creating demo delivery:', err);
+      setError('Failed to create demo delivery');
+    } finally {
+      setCreatingDemo(false);
+    }
+  };
+
   const loadDeliveryTracking = async () => {
+    if (!orderId) return;
+    
     try {
       const response = await axios.get(
         `${API_BASE}/delivery/orders/${orderId}/track`
@@ -148,6 +220,7 @@ const LiveDeliveryMap: React.FC<Props> = ({
       if (response.data.success) {
         setDelivery(response.data.data);
         setError(null);
+        setNoActiveDeliveries(false);
 
         // Load location history
         const historyResponse = await axios.get(
@@ -345,12 +418,40 @@ const LiveDeliveryMap: React.FC<Props> = ({
     );
   }
 
+  // No active deliveries - show helpful state
+  if (noActiveDeliveries) {
+    return (
+      <div className="delivery-map-container">
+        <div className="no-deliveries-state">
+          <div className="no-deliveries-icon">📦</div>
+          <h3>No Active Deliveries</h3>
+          <p>There are currently no active deliveries to track.</p>
+          <p className="no-deliveries-hint">
+            Start a delivery from the Customer Dashboard to see live tracking here.
+          </p>
+          <div className="no-deliveries-actions">
+            <button onClick={checkAndLoadDelivery} className="btn-refresh">
+              Refresh
+            </button>
+            <button 
+              onClick={createDemoDelivery} 
+              className="btn-demo"
+              disabled={creatingDemo}
+            >
+              {creatingDemo ? 'Creating...' : 'Start Demo Delivery'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (error || !delivery) {
     return (
       <div className="delivery-map-container">
         <div className="error-message">
           <p>{error || 'Failed to load delivery data'}</p>
-          <button onClick={loadDeliveryTracking}>Retry</button>
+          <button onClick={checkAndLoadDelivery}>Retry</button>
         </div>
       </div>
     );
@@ -366,7 +467,7 @@ const LiveDeliveryMap: React.FC<Props> = ({
       {/* Info Panel */}
       <div className="delivery-info-panel">
         <div className="info-header">
-          <h2>Order #{orderId.slice(-6)}</h2>
+          <h2>Order #{orderId?.slice(-6) || 'N/A'}</h2>
           <div
             className={`status-badge ${delivery.status}`}
           >
