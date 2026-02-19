@@ -5,8 +5,8 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { body, param, validationResult } from 'express-validator';
-import { activeDeliveries, customerBeacons, activeRangingSessions } from '../data/store';
+import { body, validationResult } from 'express-validator';
+import { activeDeliveries, customerBeacons, activeRangingSessions, addGPSReading, clearGPSHistory } from '../data/store';
 
 const router = Router();
 
@@ -101,38 +101,9 @@ function getArrowFromBearing(bearing: number): string {
 }
 
 /**
- * Dead Reckoning - Estimate current position based on last position, heading, and speed
- * This smooths out GPS updates and provides better tracking when GPS is delayed
+ * GPS Smoothing is now handled in data/store.ts via addGPSReading()
+ * This removes jitter and provides stable coordinates
  */
-function applyDeadReckoning(
-  lastLat: number, 
-  lastLon: number, 
-  heading: number | undefined, 
-  speed: number | undefined, 
-  elapsedSeconds: number
-): { lat: number; lon: number } {
-  // If no heading/speed data, return original position
-  if (!heading || !speed || speed < 0.1 || elapsedSeconds > 10) {
-    return { lat: lastLat, lon: lastLon };
-  }
-  
-  // Calculate distance traveled (speed is in m/s)
-  const distanceTraveled = speed * elapsedSeconds;
-  
-  // Convert heading to radians (heading is in degrees, 0 = North)
-  const headingRad = heading * Math.PI / 180;
-  
-  // Calculate lat/lon change
-  // 1 degree of latitude = ~111,111 meters
-  // 1 degree of longitude = ~111,111 * cos(latitude) meters
-  const deltaLat = (distanceTraveled * Math.cos(headingRad)) / 111111;
-  const deltaLon = (distanceTraveled * Math.sin(headingRad)) / (111111 * Math.cos(lastLat * Math.PI / 180));
-  
-  return {
-    lat: lastLat + deltaLat,
-    lon: lastLon + deltaLon
-  };
-}
 
 /**
  * Debug endpoint - check active beacons
@@ -232,6 +203,7 @@ router.post('/beacon/start', [
 /**
  * Customer updates their location (called every 3-5 seconds)
  * POST /api/ranging/beacon/update
+ * Now uses GPS smoothing to reduce jitter
  */
 router.post('/beacon/update', [
   body('orderId').notEmpty(),
@@ -249,12 +221,25 @@ router.post('/beacon/update', [
       });
     }
 
-    // Update beacon location
-    beacon.latitude = latitude;
-    beacon.longitude = longitude;
+    // Apply GPS smoothing to reduce jitter
+    const smoothed = addGPSReading(
+      `customer:${orderId}`, 
+      latitude, 
+      longitude, 
+      accuracy || 10
+    );
+
+    // If stationary, use smoothed position; if moving, use raw GPS
+    const finalLat = smoothed.isStationary ? smoothed.latitude : latitude;
+    const finalLon = smoothed.isStationary ? smoothed.longitude : longitude;
+
+    // Update beacon location with smoothed/raw coordinates
+    beacon.latitude = finalLat;
+    beacon.longitude = finalLon;
     beacon.altitude = altitude;
-    beacon.accuracy = accuracy || beacon.accuracy;
+    beacon.accuracy = smoothed.smoothedAccuracy;
     beacon.heading = heading;
+    beacon.isStationary = smoothed.isStationary; // Track if customer is standing still
     beacon.indoorDetails = indoorDetails || beacon.indoorDetails;
     beacon.lastUpdate = new Date();
 
@@ -265,17 +250,21 @@ router.post('/beacon/update', [
     if (io) {
       io.to(`delivery:${orderId}`).emit('customer:location-updated', {
         orderId,
-        latitude,
-        longitude,
+        latitude: finalLat,
+        longitude: finalLon,
+        rawLatitude: latitude, // Send raw for debugging
+        rawLongitude: longitude,
         altitude,
         heading,
+        isStationary: smoothed.isStationary,
         timestamp: new Date().toISOString()
       });
     }
 
     return res.json({
       success: true,
-      message: 'Location updated'
+      message: 'Location updated',
+      isStationary: smoothed.isStationary
     });
   } catch (error) {
     console.error('Error updating beacon:', error);
@@ -418,6 +407,7 @@ router.post('/track/start', [
 /**
  * Driver updates their position and gets new direction
  * POST /api/ranging/track/update
+ * Now uses GPS smoothing for both driver and customer positions
  */
 router.post('/track/update', [
   body('sessionId').notEmpty(),
@@ -463,7 +453,19 @@ router.post('/track/update', [
       }
     }
 
-    // Update customer location in session
+    // Apply GPS smoothing to DRIVER position (reduces jitter when standing still)
+    const smoothedDriver = addGPSReading(
+      `driver:${sessionId}`,
+      latitude,
+      longitude,
+      accuracy || 10
+    );
+
+    // Use smoothed position if driver is stationary, raw if moving
+    const driverLat = smoothedDriver.isStationary ? smoothedDriver.latitude : latitude;
+    const driverLon = smoothedDriver.isStationary ? smoothedDriver.longitude : longitude;
+
+    // Update customer location in session (already smoothed in beacon/update)
     session.customerLocation = {
       latitude: beacon.latitude,
       longitude: beacon.longitude,
@@ -471,58 +473,46 @@ router.post('/track/update', [
       accuracy: beacon.accuracy
     };
 
-    // Update driver location
+    // Update driver location with smoothed coords
     session.driverLocation = {
-      latitude,
-      longitude,
+      latitude: driverLat,
+      longitude: driverLon,
+      rawLatitude: latitude,  // Keep raw for debugging
+      rawLongitude: longitude,
       heading,
       speed,
-      accuracy: accuracy || 10
+      accuracy: smoothedDriver.smoothedAccuracy,
+      isStationary: smoothedDriver.isStationary
     };
 
-    // Apply dead reckoning for smoother tracking
-    // Only apply if customer is using live location (they might be moving)
-    // Skip for fixed location - customer position is stable
-    let estimatedCustomerPos = { lat: beacon.latitude, lon: beacon.longitude };
-    
-    if (beacon.locationType === 'live') {
-      const customerTimeSinceUpdate = (Date.now() - new Date(beacon.lastUpdate).getTime()) / 1000;
-      estimatedCustomerPos = applyDeadReckoning(
-        beacon.latitude, 
-        beacon.longitude, 
-        beacon.heading, 
-        0.5, // Assume slow walking if customer moving
-        customerTimeSinceUpdate
-      );
-    }
-
-    // Calculate new distance and bearing using estimated positions
-    const distance = calculateDistance(latitude, longitude, estimatedCustomerPos.lat, estimatedCustomerPos.lon);
-    const bearing = calculateBearing(latitude, longitude, estimatedCustomerPos.lat, estimatedCustomerPos.lon);
+    // Calculate distance using SMOOTHED positions (both already processed)
+    const distance = calculateDistance(driverLat, driverLon, beacon.latitude, beacon.longitude);
+    const bearing = calculateBearing(driverLat, driverLon, beacon.latitude, beacon.longitude);
 
     session.distance = distance;
     session.bearing = bearing;
     session.lastUpdate = new Date();
 
     // Calculate combined GPS accuracy (both driver and customer)
-    const driverAccuracy = accuracy || 15;  // Default to 15m if not provided
+    const driverAccuracy = smoothedDriver.smoothedAccuracy;
     const customerAccuracy = beacon.accuracy || 15;
     const combinedAccuracy = driverAccuracy + customerAccuracy;
     
     // GPS REALITY CHECK:
     // Browser GPS is typically ±5-50m accuracy
-    // User wants strict 2m arrival threshold
+    // With smoothing, we can achieve ±3-15m typically
     
-    // Arrival threshold = 2m (strict - user must be very close)
-    // Approaching threshold = 10m (getting close)
-    const arrivalThreshold = 2;
-    const approachingThreshold = 10;
+    // Dynamic thresholds based on accuracy:
+    // - Minimum arrival threshold = 2m (if both have excellent GPS)
+    // - Maximum arrival threshold = combinedAccuracy * 0.3 (scaled to accuracy)
+    const arrivalThreshold = Math.max(2, Math.min(combinedAccuracy * 0.3, 15));
+    const approachingThreshold = Math.max(10, combinedAccuracy * 0.5);
     
     // Log for debugging
     console.log(`[RANGING] Order: ${session.orderId}`);
-    console.log(`  Driver GPS: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${driverAccuracy}m)`);
-    console.log(`  Customer GPS: ${beacon.latitude.toFixed(6)}, ${beacon.longitude.toFixed(6)} (±${customerAccuracy}m)`);
-    console.log(`  Calculated: ${distance.toFixed(1)}m | Arrival threshold: ${arrivalThreshold.toFixed(0)}m`);
+    console.log(`  Driver GPS: ${driverLat.toFixed(6)}, ${driverLon.toFixed(6)} (±${driverAccuracy.toFixed(1)}m)${smoothedDriver.isStationary ? ' [STATIONARY]' : ''}`);
+    console.log(`  Customer GPS: ${beacon.latitude.toFixed(6)}, ${beacon.longitude.toFixed(6)} (±${customerAccuracy}m)${beacon.isStationary ? ' [STATIONARY]' : ''}`);
+    console.log(`  Distance: ${distance.toFixed(1)}m | Thresholds: arrive=${arrivalThreshold.toFixed(0)}m, approaching=${approachingThreshold.toFixed(0)}m`);
     
     // Update status based on distance WITH GPS accuracy consideration
     if (distance <= arrivalThreshold) {
@@ -540,8 +530,8 @@ router.post('/track/update', [
     if (io) {
       io.to(`delivery:${session.orderId}`).emit('ranging:updated', {
         orderId: session.orderId,
-        driverLatitude: latitude,
-        driverLongitude: longitude,
+        driverLatitude: driverLat,
+        driverLongitude: driverLon,
         customerLatitude: beacon.latitude,
         customerLongitude: beacon.longitude,
         distance: distance <= 10 ? parseFloat(distance.toFixed(1)) : Math.round(distance),
@@ -551,7 +541,9 @@ router.post('/track/update', [
         status: session.status,
         eta: Math.ceil(distance / 1.4), // Seconds at walking speed
         accuracy: combinedAccuracy,
-        arrivalThreshold: arrivalThreshold
+        arrivalThreshold: arrivalThreshold,
+        driverStationary: smoothedDriver.isStationary,
+        customerStationary: beacon.isStationary || false
       });
     }
 
@@ -569,9 +561,13 @@ router.post('/track/update', [
           latitude: beacon.latitude,
           longitude: beacon.longitude,
           indoorDetails: beacon.indoorDetails,
-          locationType: beacon.locationType
+          locationType: beacon.locationType,
+          isStationary: beacon.isStationary || false
         },
+        driverStationary: smoothedDriver.isStationary,
         status: session.status,
+        accuracy: combinedAccuracy,
+        arrivalThreshold,
         eta: Math.ceil(distance / 1.4), // ETA in seconds at walking speed (1.4 m/s)
         message: session.status === 'arrived' 
           ? 'You have arrived! Look around for the customer.'

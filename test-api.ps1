@@ -42,8 +42,6 @@ try {
 Write-Host "4. Login Client..." -NoNewline
 try { 
     $r = Invoke-RestMethod "$base/auth/login" -Method POST -Headers $h -Body '{"email":"client_test@test.com","password":"Test123!","role":"client"}'
-    $clientToken = $r.data.sessionToken
-    $clientId = $r.data.userId
     Write-Host " PASS" -ForegroundColor Green
     $results += "4. Login Client: PASS"
 } catch { 
@@ -55,8 +53,6 @@ try {
 Write-Host "5. Login Driver..." -NoNewline
 try { 
     $r = Invoke-RestMethod "$base/auth/login" -Method POST -Headers $h -Body '{"email":"driver_test@test.com","password":"Test123!","role":"driver"}'
-    $driverToken = $r.data.sessionToken
-    $driverId = $r.data.userId
     Write-Host " PASS" -ForegroundColor Green
     $results += "5. Login Driver: PASS"
 } catch { 
@@ -151,7 +147,6 @@ try {
     $r = Invoke-RestMethod "$base/nfc/generate" -Method POST -Headers $h -Body $nfcBody
     Write-Host " PASS" -ForegroundColor Green
     $results += "10. NFC Generate: PASS"
-    $nfcToken = $r.data.encryptedToken
 } catch { 
     Write-Host " FAIL - $($_.Exception.Message)" -ForegroundColor Red
     $results += "10. NFC Generate: FAIL"

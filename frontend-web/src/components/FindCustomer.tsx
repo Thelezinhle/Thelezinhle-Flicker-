@@ -22,6 +22,7 @@ interface CustomerLocation {
   longitude: number;
   locationType?: 'live' | 'fixed';
   isDeliveryFallback?: boolean; // True if using order address instead of live sharing
+  isStationary?: boolean; // True if customer is standing still
   indoorDetails?: {
     building?: string;
     floor?: string;
@@ -41,6 +42,8 @@ interface TrackingData {
   eta?: number;
   accuracy?: number;
   arrivalThreshold?: number;
+  driverStationary?: boolean;
+  customerStationary?: boolean;
 }
 
 const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, onClose }) => {
@@ -51,6 +54,7 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
   const [myLocation, setMyLocation] = useState<{lat: number, lng: number} | null>(null);
   const [locationType, setLocationType] = useState<'live' | 'fixed'>('fixed'); // Default to stable fixed location
   const [verificationCode, setVerificationCode] = useState<string | null>(null); // 4-digit code for driver verification
+  const [isStationary, setIsStationary] = useState(false); // Track if user is standing still
   
   // Driver state
   const [tracking, setTracking] = useState(false);
@@ -226,7 +230,7 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
         const { latitude, longitude, accuracy, heading } = position.coords;
         const now = Date.now();
         
-        // Use RAW GPS coordinates for accuracy (no smoothing - caused 30m drift)
+        // Send RAW GPS to server - smoothing is done server-side
         setMyLocation({ lat: latitude, lng: longitude });
 
         // Throttle API calls to every 2 seconds
@@ -236,17 +240,22 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
         lastUpdateTimeRef.current = now;
 
         try {
-          await fetch(`${API_BASE}/ranging/beacon/update`, {
+          const response = await fetch(`${API_BASE}/ranging/beacon/update`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               orderId,
-              latitude, // Send RAW GPS, not smoothed
+              latitude, // Send RAW GPS - server applies smoothing
               longitude,
               accuracy,
               heading
             })
           });
+          
+          const data = await response.json();
+          if (data.success && data.isStationary !== undefined) {
+            setIsStationary(data.isStationary);
+          }
         } catch (error) {
           console.error('Error updating location:', error);
         }
@@ -326,7 +335,10 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               arrow: data.data.arrow,
               status: data.data.status,
               customerLocation: data.data.customerLocation,
-              message: `${data.data.distance}m to customer`
+              message: `${data.data.distance}m to customer`,
+              accuracy: data.data.accuracy,
+              arrivalThreshold: data.data.arrivalThreshold,
+              driverStationary: data.data.driverStationary
             });
             startContinuousTracking(data.data.sessionId);
           } else {
@@ -404,7 +416,11 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
               arrow: data.data.arrow,
               status: data.data.status,
               customerLocation: data.data.customerLocation,
-              message: data.data.message
+              message: data.data.message,
+              accuracy: data.data.accuracy,
+              arrivalThreshold: data.data.arrivalThreshold,
+              driverStationary: data.data.driverStationary,
+              customerStationary: data.data.customerLocation?.isStationary
             });
 
             // DON'T auto-complete - driver must manually confirm they found customer
@@ -706,19 +722,23 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
                 fontSize: '12px'
               }}>
                 {locationType === 'fixed' ? '📍 Fixed Location' : '🔴 Live Location'}
+                {locationType === 'live' && isStationary && ' (stable)'}
               </div>
               
               {/* Show customer's own GPS */}
               <div style={{
                 marginTop: '12px',
                 padding: '10px',
-                background: '#e8f5e9',
+                background: isStationary ? '#d1fae5' : '#e8f5e9',
+                border: isStationary ? '2px solid #10b981' : 'none',
                 borderRadius: '8px',
                 fontSize: '11px',
                 color: '#1e3a5f',
                 textAlign: 'center'
               }}>
-                <strong>📍 Your GPS {locationType === 'live' ? '(LIVE)' : '(FIXED)'}:</strong><br/>
+                <strong>📍 Your GPS {locationType === 'live' ? '(LIVE)' : '(FIXED)'}:</strong>
+                {isStationary && <span style={{ color: '#059669', marginLeft: '5px' }}>✅ Stable</span>}
+                <br/>
                 Lat: {myLocation?.lat?.toFixed(6) ?? 'Loading...'}<br/>
                 Lng: {myLocation?.lng?.toFixed(6) ?? 'Loading...'}
               </div>
@@ -893,6 +913,32 @@ const FindCustomer: React.FC<FindCustomerProps> = ({ userRole, userId, orderId, 
                     <strong>GPS shows {trackingData.distance}m</strong> - keep walking {trackingData.direction}.<br/>
                     When close, look around visually for the customer.
                   </>
+                )}
+              </div>
+            )}
+
+            {/* Stationary indicator - BOTH standing still = most reliable reading */}
+            {(trackingData.driverStationary || trackingData.customerStationary) && (
+              <div style={{
+                marginTop: '8px',
+                padding: '8px 12px',
+                background: trackingData.driverStationary && trackingData.customerStationary 
+                  ? 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)'
+                  : '#e0f2fe',
+                border: trackingData.driverStationary && trackingData.customerStationary 
+                  ? '2px solid #10b981' : '1px solid #3b82f6',
+                borderRadius: '8px',
+                fontSize: '11px',
+                textAlign: 'center'
+              }}>
+                {trackingData.driverStationary && trackingData.customerStationary ? (
+                  <>
+                    <strong>✅ STABLE READING</strong> - Both standing still, distance is accurate
+                  </>
+                ) : trackingData.driverStationary ? (
+                  <>📍 You are standing still (GPS stabilized)</>
+                ) : (
+                  <>📍 Customer is standing still (their GPS is stable)</>
                 )}
               </div>
             )}
