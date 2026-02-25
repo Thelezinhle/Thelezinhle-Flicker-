@@ -152,6 +152,20 @@ class BluetoothService {
   }
 
   /**
+   * Convert RSSI to distance using the log-distance path loss model
+   */
+  private distanceToRssi(distance: number): number {
+    return this.txPower - 10 * this.pathLossExponent * Math.log10(distance);
+  }
+
+  /**
+   * Convert RSSI to distance using the log-distance path loss model
+   */
+  private rssiToDistance(rssi: number): number {
+    return Math.pow(10, (this.txPower - rssi) / (10 * this.pathLossExponent));
+  }
+
+  /**
    * Start distance estimation using RSSI
    * Note: Web Bluetooth doesn't expose RSSI directly after initial scan
    * This simulates RSSI updates - in production, use a custom GATT characteristic
@@ -165,28 +179,21 @@ class BluetoothService {
 
     console.log('📡 Starting Bluetooth ranging...');
 
-    // Simulate RSSI updates
-    // In production, implement a custom BLE GATT service on the target device
-    let baseDistance = 10; // meters
-    
     this.rssiInterval = window.setInterval(async () => {
       if (!this.isConnected) {
         this.stopRanging();
         return;
       }
 
-      // Simulate distance changes (in production, read from GATT characteristic)
-      const variation = (Math.random() - 0.5) * 2; // ±1m variation
-      const distance = Math.max(0.5, baseDistance + variation);
-
-      // Simulate RSSI from distance
-      const rssi = this.distanceToRssi(distance);
+      // Simulate RSSI value (replace with actual RSSI reading in production)
+      const simulatedRssi = -70 + (Math.random() * 10 - 5); // Simulate RSSI between -75 and -65
+      const distance = this.rssiToDistance(simulatedRssi);
 
       const rangingData: BluetoothRangingData = {
         connected: true,
-        rssi: rssi,
+        rssi: simulatedRssi,
         distance: distance,
-        accuracy: 2.0, // meters
+        accuracy: 1.0, // meters
         technology: 'bluetooth',
         timestamp: Date.now()
       };
@@ -195,7 +202,7 @@ class BluetoothService {
 
       // Send to backend if enabled
       if (this.sendToBackendEnabled && this.device) {
-        await this.sendRangingToBackend(this.device.id, rssi, distance);
+        await this.sendRangingToBackend(this.device.id, simulatedRssi, distance);
       }
     }, 1000);
 
@@ -271,24 +278,6 @@ class BluetoothService {
     this.device = null;
     this._server = null;
     console.log('🔌 Bluetooth disconnected');
-  }
-
-  /**
-   * Convert RSSI to distance using log-distance path loss model
-   * distance = 10 ^ ((txPower - rssi) / (10 * n))
-   */
-  rssiToDistance(rssi: number): number {
-    if (rssi === 0) return -1;
-    const ratio = (this.txPower - rssi) / (10 * this.pathLossExponent);
-    return Math.pow(10, ratio);
-  }
-
-  /**
-   * Convert distance to expected RSSI (for simulation)
-   */
-  distanceToRssi(distance: number): number {
-    if (distance <= 0) return this.txPower;
-    return this.txPower - (10 * this.pathLossExponent * Math.log10(distance));
   }
 
   /**
