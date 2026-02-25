@@ -154,13 +154,6 @@ class BluetoothService {
   /**
    * Convert RSSI to distance using the log-distance path loss model
    */
-  private distanceToRssi(distance: number): number {
-    return this.txPower - 10 * this.pathLossExponent * Math.log10(distance);
-  }
-
-  /**
-   * Convert RSSI to distance using the log-distance path loss model
-   */
   private rssiToDistance(rssi: number): number {
     return Math.pow(10, (this.txPower - rssi) / (10 * this.pathLossExponent));
   }
